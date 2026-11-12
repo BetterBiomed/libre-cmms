@@ -1,0 +1,9 @@
+{
+  "name": "Libre CMMS",
+  "short_name": "Libre",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#0f5e6e",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

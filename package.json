@@ -1,0 +1,19 @@
+{
+  "name": "libre-cmms",
+  "version": "0.1.0",
+  "description": "Libre - open-source Computerized Maintenance Management System for hospital and medical equipment (HTM / clinical engineering).",
+  "author": "CreativeMed LLC",
+  "copyright": "Copyright (C) 2026 CreativeMed LLC",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "main": "server/server.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test",
+    "release": "powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1"
+  },
+  "dependencies": {}
+}

@@ -1,0 +1,10 @@
+data/
+dist/
+node_modules/
+config/libre.config.json
+*.db
+*.db-wal
+*.db-shm
+.claude/settings.local.json
+*.odt
+.claude/

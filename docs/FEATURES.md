@@ -1,0 +1,44 @@
+# Libre feature coverage and roadmap
+
+Copyright © 2026 CreativeMed LLC — AGPL-3.0-or-later
+
+This maps the healthcare CMMS reference description (sections 1–24) to what Libre
+0.1 implements today and what is planned.
+
+Legend: **✔** implemented · **◐** partial · **○** roadmap
+
+| # | Module | Status | Libre 0.1 implementation |
+|---|---|---|---|
+| 1 | Equipment asset management | ✔ | Asset tag auto-numbering, control #, model catalog (manufacturer/model/category/risk class), serial, status, criticality, risk score, facility/department/room, owner, parent-child components, purchase/install/warranty/price, expected life and auto-calculated replacement date, end-of-support, loaner flag, network/firmware fields, transfer history (automatic), photos and documents, printable asset labels with selectable **QR code, Code 128 barcode, or both** (QR can hold a service-request link), 4 label sizes, scanning, CSV bulk import with duplicate detection. ○ automated network discovery. |
+| 1a | Inventory Mode & Unable To Locate | ✔ | Department inventories by facility/department with scanner, camera or QR scanning; red flags (previous UTL, open recall with pop-up alert, open repair, out of service, retired, not in inventory with add-asset pop-up prefilled), yellow flags (end-of-life letter / end of support, PM due this month or overdue); completion updates each asset's **current location** (never the owning department) and marks unscanned assets UTL. UTL on work orders (PM goes On Hold and is released automatically when found), UTL history per asset, and UTL / flag / metrics reports. |
+| 2 | Work order management | ✔ | 11 WO types (CM, PM, inspection, calibration, safety, acceptance, upgrade, recall, incident, decommission, cybersecurity), auto WO numbers, requester/department, priority, assignment, requested/assigned/started/completed timestamps, failure/cause/action codes (admin-editable), labor entries with rates and overtime, parts consumption (deducts stock), external costs, downtime, return-to-service, technician and supervisor **electronic signatures** with password re-entry, attachments, follow-up WOs, reopen with reason, locked when closed. SLA escalation notifications. **Filter and bulk-assign**: filter current work orders by status, type, priority, technician, team, facility, department, device type, model and due date, select any number (or all matching), then assign to a technician (with live workload) or a team queue, or set priority/due date/status/cancel in one step, each change audited. ◐ fully automatic routing by skill (default technician/team per PM schedule today). |
+| 3 | Preventive maintenance | ✔ | Calendar PM schedules per asset, monthly through multi-year intervals, programs (Manufacturer, AEM, risk-based, regulatory, supplemental), automatic WO generation with lead time, next-due recalculation on completion, grace period, compliance %, overdue tracking, **deferral/exception approval** by a supervisor, bulk scheduling by model, PM completion KPIs and reports. ◐ usage-based fields stored (meter/interval); automatic usage triggering is on the roadmap. ○ workload forecasting chart. |
+| 4 | Testing & calibration | ✔ | Configurable procedures with measurement steps (nominal, limits, ± % or absolute tolerance), automatic limit calculation, error %, pass/fail, as-found / as-left values, test equipment selection with **calibration status check** (blocks overdue equipment unless a supervisor overrides), certificate #, printable test record. ○ direct instrument communication (USB/RS-232/BLE). The `PUT /api/runs/:id/results` API accepts measurement data by step number, ready for analyzer integrations such as BC Group instruments. |
+| 5 | Digital procedures | ✔ | Step-by-step checklists, required/optional steps, conditional troubleshooting steps (shown when a step fails), media/manual links per step, mandatory completion before sign-off, failed test → automatic corrective WO and asset taken out of service, **version control** (approved procedures locked, new revision workflow, prior versions retired, completed records keep a snapshot of the version used), approval by a supervisor, digital signatures. |
+| 6 | Service request portal | ✔ | Public, no-login portal (`/portal`), asset lookup by tag (labels link to `/portal?asset=TAG`), department/room, urgency, status tracking link with access code, conversion to WO, automatic notifications, satisfaction survey. ◐ photo upload by requesters (staff can attach). |
+| 7 | Technician & workforce | ✔ | Teams with members and leads (team work queues, "My teams' queue"), workload view (open/overdue/urgent per technician), technician profiles, skills, territory, shift, availability, labor rate, certifications and training with expiry alerts, individual "My open work" dashboard, productivity report, overtime tracking. ○ shift calendar and GPS dispatch. |
+| 8 | Parts & inventory | ✔ | Parts catalog, mfr/vendor part #, costs, on-hand, min/max, reorder alerts, storerooms/bins, lot/serial and expiration fields, core exchange flag, stock transactions (receive/issue/return/adjust/count), purchase orders with lines and receiving, usage and valuation report. ○ demand forecasting. |
+| 9 | Vendors, contracts, warranty | ✔ | Vendor database, contract types, dates, costs, response time, uptime, coverage of labor/parts/PM, renewal notices, **coverage check banner on every WO** before billable work, contract utilization and in-house vs vendor cost report. |
+| 10 | Compliance & accreditation | ✔ | Append-only audit trail of every change, login, e-signature, export and attachment (SHA-256 recorded), PM compliance by department including life-support %, AEM program tagging, incident tracking, recall documentation, printable surveyor-ready reports. |
+| 11 | Recalls & safety alerts | ✔ | Recall/alert records, affected model and serial matching (lists, ranges, wildcards), automatic flagging of affected assets, bulk recall WO generation, per-asset status, closure, compliance report. ○ automatic FDA feed import. |
+| 12 | Lifecycle & capital planning | ✔ | Age, expected life, end of support, lifetime maintenance cost vs acquisition, failures in 12 months, criticality → **replacement priority score** with recommendation. |
+| 13 | Financial | ✔ | Labor, parts, external, contract costs, cost per asset/department/cost center, billable flag. ○ ERP export connectors, depreciation schedules, invoicing. |
+| 14 | Reporting & KPIs | ✔ | Dashboard (PM completion trend, open/overdue WOs, MTTR, down equipment, recalls, etc.) plus 15 reports (inventory, PM compliance, overdue PM, WO history, cost by asset/department, MTBF/MTTR/availability by model, repeat repairs, replacement planning, technician productivity, cybersecurity, recalls, test records, contracts, parts, service requests) with filters, CSV/Excel export and print-to-PDF. |
+| 15 | Mobile | ◐ | Responsive web app, installable to the home screen, camera barcode scanning (Android Chrome over HTTPS), photo capture, checklists, e-signatures. ○ offline mode with sync, push notifications. |
+| 16 | Documents & knowledge | ✔ | Document library (manuals, schematics, certificates, bulletins, knowledge articles) linked to models/assets, attachments, revision field, full-text search. |
+| 17 | Cybersecurity | ✔ | IP/MAC/hostname/VLAN, OS/software/firmware, cyber risk, patch status, SBOM reference, vulnerabilities, networked device report, cybersecurity WO type. ○ vulnerability scanner integration. |
+| 18 | Multi-facility | ◐ | Multiple facilities and departments, filtering and reports per facility. ○ per-facility permissions. |
+| 19 | ISO / field service | ◐ | Customers linked to facilities, labor/mileage rates, customer contracts, billable WOs, travel miles. ○ quotes, invoicing, per-customer data isolation (multi-tenant) and customer portal logins. |
+| 20 | AI & automation | ○ | Planned as optional, reviewable suggestions (WO classification, troubleshooting search, anomaly detection on test results). |
+| 21 | Administration & security | ◐ | Role-based access (admin, supervisor, technician, requester, viewer), scrypt password hashing, lockout, session expiry, CSRF protection, security headers, HTTPS, audit trail, daily backups, editable code lists, CSV import/export, JSON REST API. ○ SSO/LDAP, MFA, custom fields UI, SMTP email notifications. |
+| 22 | End-to-end lifecycle | ✔ | Acquisition → acceptance test WO → PM/repairs/recalls → analytics → decommission WO (sets asset Retired). |
+
+## Roadmap (proposed priority)
+
+1. Email (SMTP) notifications and daily digests
+2. Offline-capable mobile mode (service worker plus sync queue)
+3. LDAP / Active Directory and SAML/OIDC single sign-on, and TOTP multi-factor authentication
+4. Test-instrument integration (serial/USB bridge, starting with electrical safety analyzers)
+5. Multi-tenant ISO mode with customer logins
+6. FDA recall feed import
+7. Custom fields and forms editor

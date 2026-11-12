@@ -1,0 +1,28 @@
+Libre CMMS
+Copyright (C) 2026 CreativeMed LLC. All rights reserved except as granted below.
+
+Libre is free software: you can redistribute it and/or modify it under the terms
+of the GNU Affero General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program (see the LICENSE file). If not, see <https://www.gnu.org/licenses/>.
+
+"Libre CMMS" and the CreativeMed name are not licensed under the AGPL. Forks must
+not imply endorsement by CreativeMed LLC.
+
+Commercial licensing (use without the AGPL's source-sharing obligations) is
+available from CreativeMed LLC, the copyright holder.
+
+Medical disclaimer: Libre is maintenance-management software. It is not a medical
+device and does not by itself establish compliance with any regulation or
+accreditation standard. Results, signatures and automated recommendations must be
+reviewed by qualified personnel.
+
+Third-party components: none. Libre uses only the Node.js runtime and its
+built-in modules (including SQLite), which are distributed separately under
+their own licenses.

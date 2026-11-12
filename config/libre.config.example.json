@@ -1,0 +1,20 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "dataDir": "data",
+  "trustProxy": false,
+  "sessionHours": 12,
+  "maxUploadMB": 50,
+  "https": {
+    "enabled": false,
+    "certFile": "config/cert.pem",
+    "keyFile": "config/key.pem",
+    "redirectHttpPort": 0
+  },
+  "backup": {
+    "enabled": true,
+    "hour": 2,
+    "keep": 14,
+    "dir": ""
+  }
+}
