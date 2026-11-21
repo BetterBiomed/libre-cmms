@@ -16,5 +16,8 @@
     "hour": 2,
     "keep": 14,
     "dir": ""
+  },
+  "lookup": {
+    "openFdaApiKey": ""
   }
 }

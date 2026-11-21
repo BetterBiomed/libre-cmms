@@ -36,6 +36,7 @@ On Windows you can double-click `start-libre.cmd`. To install as a service, see 
 
 ## Highlights
 
+* Device Lookup: type a model number and Libre fills in manufacturer, device type, FDA class, product code, criticality and a suggested PM interval from the FDA device databases and its maintenance reference, plus recalls and links to ECRI, AAMI and OEM resources; add several of the same device quickly with "Add similar"
 * Inventory Mode: department scanning with red/yellow flags (recalls, open repairs, previous Unable To Locate, end-of-life, PMs due), current-location updates, and Unable To Locate tracking and reports
 * Asset management: models, locations, parent/child components, warranty, lifecycle, network/cybersecurity data, QR code and/or barcode labels, CSV import with duplicate detection
 * Work orders: 11 types, labor and parts costing, failure/cause/action codes, warranty/contract coverage check, technician and supervisor e-signatures, SLA escalation, filter-and-bulk-assign to technicians or team queues

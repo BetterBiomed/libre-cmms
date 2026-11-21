@@ -15,6 +15,7 @@ const crud = require('./lib/crud');
 const logic = require('./lib/logic');
 const reports = require('./lib/reports');
 const inventory = require('./lib/inventory');
+const deviceLookup = require('./lib/device-lookup');
 const { HttpError } = crud;
 
 const VERSION = require('../package.json').version;
@@ -41,6 +42,7 @@ function loadConfig() {
 
 const config = loadConfig();
 const db = dbm.open(config.dataDir);
+require('./lib/device-lookup').configure(config.lookup || {});
 fs.mkdirSync(config.uploadDir, { recursive: true });
 
 // ---------------- helpers ----------------
@@ -153,7 +155,8 @@ function importCsv(ctx, ename, text) {
   const rows = parseCsv(text);
   if (rows.length < 2) throw new HttpError(400, 'CSV needs a header row and at least one data row.');
   const header = rows[0].map(h => h.trim());
-  const map = header.map(h => e.columns.find(f => f.name === h || f.label.toLowerCase() === h.toLowerCase()));
+  const norm = s => String(s).trim().toLowerCase();
+  const map = header.map(h => e.columns.find(f => f.name === h || norm(f.label) === norm(h) || (f.aliases || []).some(a => norm(a) === norm(h))));
   const result = { created: 0, updated: 0, errors: [], duplicates: 0 };
   const uniqueField = e.columns.find(f => f.unique);
   for (let i = 1; i < rows.length; i++) {
@@ -352,6 +355,12 @@ route('POST', '/api/import/:entity', async (ctx, p) => {
 });
 
 // Workflows
+// Device Lookup (FDA GUDID / classification / recalls + Libre reference table)
+const blockRequester = ctx => need(!['requester'].includes(ctx.user.role));
+route('GET', '/api/device-lookup', async (ctx) => { blockRequester(ctx); return deviceLookup.lookup(ctx, ctx.query); });
+route('GET', '/api/device-lookup/recalls', async (ctx) => { blockRequester(ctx); return deviceLookup.recalls(ctx, ctx.query); });
+route('POST', '/api/device-lookup/apply', async (ctx) => deviceLookup.apply(ctx, await jsonBody(ctx.req)));
+route('POST', '/api/device-lookup/recall', async (ctx) => deviceLookup.importRecall(ctx, await jsonBody(ctx.req)));
 // Inventory Mode
 route('POST', '/api/inventories', async (ctx) => inventory.start(ctx, await jsonBody(ctx.req)));
 route('GET', '/api/inventories/:id/session', (ctx, p) => inventory.session(ctx, Number(p.id)));
@@ -486,7 +495,7 @@ route('POST', '/api/notifications/read', (ctx) => {
 });
 
 // Administration
-const SETTING_KEYS = ['org_name', 'portal_enabled', 'portal_message', 'sla_emergency_hours', 'sla_urgent_hours', 'sla_high_hours', 'public_url', 'label_code', 'label_qr_content', 'label_size'];
+const SETTING_KEYS = ['org_name', 'portal_enabled', 'portal_message', 'sla_emergency_hours', 'sla_urgent_hours', 'sla_high_hours', 'public_url', 'label_code', 'label_qr_content', 'label_size', 'device_lookup_online'];
 route('GET', '/api/settings', (ctx) => {
   need(ctx.user.role === 'admin');
   const s = {}; for (const k of SETTING_KEYS) s[k] = dbm.getSetting(db, k, '');

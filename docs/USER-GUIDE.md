@@ -16,7 +16,7 @@ Copyright © 2026 CreativeMed LLC — AGPL-3.0-or-later
 
 1. **Organization:** add Facilities and Departments (with cost centers).
 2. **Users:** add users and set each initial password (Users → open user → Set Password). Users must change it at first sign-in.
-3. **Equipment models:** add manufacturer/model/category, the manufacturer PM interval and expected life. Or import assets by CSV, using `Manufacturer|Model` in the Model column to create models automatically.
+3. **Equipment models:** add manufacturer, model and device type (or use **Device Lookup**), the PM interval and expected life. Or import assets by CSV, using `Manufacturer|Model` in the Model column to create models automatically.
 4. **Assets:** add or import inventory. Print labels (Assets → Print labels): choose **QR code, barcode, or both**, what the QR code contains, and the label size. Set the defaults under Settings → Asset labels.
 5. **Test equipment:** create assets for your analyzers and simulators, tick *This is test equipment*, and enter the calibration due date.
 6. **Procedures:** create a procedure, add steps (Pass/Fail, Measurement with limits, Instruction, Text Entry), then have a supervisor **Approve** it.
@@ -33,6 +33,33 @@ Copyright © 2026 CreativeMed LLC — AGPL-3.0-or-later
 6. Add **Labor** and **Parts Used** (parts are deducted from stock automatically) and attach photos.
 7. **Complete & Sign** the work order: describe the work and confirm return to service.
 8. A supervisor reviews it and selects **Supervisor Sign-off**, which closes and locks the work order.
+
+## Device Lookup
+
+Use Device Lookup to fill in equipment details from a model number instead of typing them.
+
+* Open it from **Device Lookup** in the left menu, the **Device Lookup** button on the Assets and Equipment Models lists, **Look up device** on the Add/Edit Asset and Equipment Model forms, or **Look Up / Refresh** on a model's page.
+* Type the **model or model number** (the REF / catalog number on the device label works best) and optionally the **manufacturer**.
+* Libre searches:
+  1. your own equipment catalog
+  2. the **FDA GUDID** (Unique Device Identification) database, for manufacturer, brand / common name, model, GMDN term and UDI-DI
+  3. **FDA 510(k) clearances**, which cover older and discontinued models that predate UDI labeling (for example the LIFEPAK 12). These are marked *Older model - 510(k)*.
+  4. **FDA Product Classification**, for FDA device class, product code, regulation, medical specialty and the life-sustaining flag
+  5. its built-in **maintenance reference**, which suggests device type, **PM interval**, expected service life and criticality
+* The manufacturer is matched loosely: punctuation and spacing don't matter ("physiocontrol" finds Physio-Control), and common parent companies are understood (Stryker / Physio-Control, BD / CareFusion, Medtronic / Covidien, Philips / Respironics, Baxter / Hill-Rom / Welch Allyn, GE / Datex-Ohmeda, and others). Model spacing doesn't matter either ("Lifepak12" = "LIFEPAK 12").
+* **Select** a match to review every field, with the source shown under each. Then **Save to equipment models**, **Save & add asset**, or (from a form) **Use for this asset**. Saving never overwrites values you already entered on an existing model unless you tick *Overwrite*.
+* **Check FDA recalls** lists FDA recalls that mention the model. **Import** creates the recall in Libre (classification, affected lots/serials, reason); then use *Find Affected Assets* on it.
+* **More references** links to ECRI (UMDNS / Device Evaluations, membership required), AAMI maintenance standards (EQ56 / EQ89), FDA databases, and a web search for the OEM service manual and PM interval.
+* Suggested PM intervals and service lives are typical starting points, not manufacturer requirements. Confirm them against the OEM service manual and your AEM / risk-based program. Results marked **Verify type** or **Accessory / consumable?** need a closer look. FDA data is provided "as is" by openFDA.
+
+## Adding several of the same device
+
+After you save a new asset, Libre asks whether to:
+
+* **Create a PM schedule** using the model's PM interval (choose the first due date and the approved procedure for the model), and
+* **Add another similar** asset. The next form copies the model (manufacturer and device class), description, criticality, lifecycle and purchase details. You enter the **asset tag** and **serial number** and choose the **owning account** (facility and department) for each unit; those fields are highlighted.
+
+You can also select **+ Add Similar** on any asset's page.
 
 ## Inventory Mode
 

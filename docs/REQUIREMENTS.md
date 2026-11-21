@@ -22,7 +22,7 @@ installed on the user devices.
 | Runtime | **Node.js 24 LTS** or later (minimum 22.13). Download from https://nodejs.org. No other software, database server, or npm packages are required. |
 | Database | Built in (SQLite, included in Node.js). Stored in a single file: `data/libre.db`. |
 | Operating system | Windows 10/11 or Windows Server 2016+; Ubuntu 22.04+/Debian 12+/RHEL 9+ or any Linux supported by Node.js 24; macOS 13+. |
-| Internet access | **Not required** for normal operation. Libre runs entirely on your local network. Internet is only needed to download Node.js / Libre updates and, if you choose, for remote access. |
+| Internet access | **Not required** for normal operation. Libre runs entirely on your local network. Internet is only needed to download Node.js / Libre updates, for the optional **Device Lookup** (FDA database), and, if you choose, for remote access. |
 
 ## 2. Server hardware
 
@@ -49,7 +49,7 @@ Notes:
 | Firewall | Allow inbound traffic on that port from the networks your users are on. The installer can add a Windows Firewall rule. |
 | Address | Static IP or DNS name (for example `cmms.hospital.local`). |
 | Bandwidth | Minimal: about 50–300 KB per page view, plus attachment sizes. Works over Wi-Fi and cellular. |
-| Outbound | None required. |
+| Outbound | None required. For the optional Device Lookup, allow HTTPS (TCP 443) from the server to `api.fda.gov`. Only the model / manufacturer text typed into the lookup is sent; results are cached for 30 days. Turn it off under Settings (`device_lookup_online`). |
 
 ## 4. HTTPS (strongly recommended)
 
@@ -101,5 +101,5 @@ For options C and D, set `"trustProxy": true` in the config so Libre records the
 
 * No Microsoft SQL Server, MySQL, PostgreSQL or other database server
 * No IIS or Apache (only if you choose to use one as a reverse proxy)
-* No internet connection
+* No internet connection (except for the optional Device Lookup)
 * No per-user licenses

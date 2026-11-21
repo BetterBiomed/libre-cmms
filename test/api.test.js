@@ -222,6 +222,13 @@ test('Libre end-to-end', async (t) => {
     assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.equal(r.data.created, 2);
     assert.equal(r.data.duplicates, 1);
+    // Old exports used the "Category" column; it still maps to Device Type.
+    const m = await api('POST', '/api/import/models', 'Manufacturer,Model,Category\nAcme,CSV-1,Infusion Pump\n', true);
+    assert.equal(m.data.created, 1, JSON.stringify(m.data));
+    const m2 = await api('POST', '/api/import/models', 'manufacturer,model,Device Type\nAcme,CSV-2,Ventilator\n', true);
+    assert.equal(m2.data.created, 1, JSON.stringify(m2.data));
+    const rows = (await api('GET', '/api/e/models?q=CSV-')).data.rows;
+    assert.deepEqual(rows.map(x => x.category).sort(), ['Infusion Pump', 'Ventilator']);
   });
 
   await t.test('roles enforced', async () => {

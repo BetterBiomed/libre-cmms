@@ -11,6 +11,10 @@ const nativeReplaceChildren = Element.prototype.replaceChildren;
 Element.prototype.replaceChildren = function (...kids) {
   return nativeReplaceChildren.apply(this, kids.flat(Infinity).filter(k => k != null && k !== false));
 };
+const nativeAppend = Element.prototype.append;
+Element.prototype.append = function (...kids) {
+  return nativeAppend.apply(this, kids.flat(Infinity).filter(k => k != null && k !== false));
+};
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,6 +75,7 @@ function modal(title, body, buttons = [], opts = {}) {
     const bg = h('div', { class: 'modal-bg', onclick: e => { if (e.target === bg && !opts.sticky) close(null); } }, m);
     $('#modal-root').append(bg);
     const first = $('input, select, textarea', m); if (first) first.focus();
+    if (opts.onOpen) opts.onOpen(close);
     m.addEventListener('keydown', e => { if (e.key === 'Escape') close(null); });
   });
 }
@@ -252,6 +257,7 @@ async function startApp() {
     S.user.role !== 'requester' ? h('a', { href: '#/dashboard' }, 'Dashboard') : null,
     S.user.role !== 'requester' ? h('a', { href: '#/scan' }, 'Scan / Find Asset') : null,
     S.user.role !== 'requester' ? h('a', { href: '#/inventory' }, 'Inventory Mode') : null,
+    S.user.role !== 'requester' ? h('a', { href: '#/lookup' }, 'Device Lookup') : null,
     ...order.filter(g => groups[g]).flatMap(g => [h('div', { class: 'grp' }, g), ...groups[g].map(e => h('a', { href: `#/list/${e.name}` }, e.plural))]),
     S.user.role !== 'requester' ? [h('div', { class: 'grp' }, 'Analysis'), h('a', { href: '#/reports' }, 'Reports & KPIs')] : null,
     isMgr ? h('a', { href: '#/audit' }, 'Audit Trail') : null,
@@ -330,6 +336,7 @@ async function route() {
     if (parts[0] === 'audit') return await viewAudit(content, params);
     if (parts[0] === 'settings') return await viewSettings(content);
     if (parts[0] === 'scan') return viewScan(content);
+    if (parts[0] === 'lookup') return viewDeviceLookup(content, params);
     if (parts[0] === 'inventory') return parts[1] ? await viewInventory(content, Number(parts[1])) : await viewInventoryStart(content);
     if (parts[0] === 'run') return await viewRun(content, Number(parts[1]));
     if (parts[0] === 'labels') return await viewLabels(content, params);
@@ -425,6 +432,7 @@ async function viewList(el, name, params) {
     const r = await api('POST', '/api/pm/generate', {}).catch(fail); if (r) { toast(`${r.created.length} PM work order(s) generated`); load(); }
   } }, 'Generate due PMs'));
   if (name === 'assets') extra.push(h('a', { class: 'btn', href: `#/labels?view=${state.view}` }, 'Print labels'));
+  if (name === 'assets' || name === 'models') extra.push(h('a', { class: 'btn', href: '#/lookup' }, '\u{1F50D} Device Lookup'));
   el.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, e.plural), e.note ? h('div', { class: 'muted small' }, e.note) : null),
       h('div', { class: 'actions' }, ...extra,
@@ -518,7 +526,7 @@ async function viewWorkOrders(el, params) {
     fld('Technician', picker('assigned', 'users', { filter: { view: 'techs' } })),
     fld('Team', picker('team', 'teams')),
     fld('Facility', picker('facility', 'facilities')), fld('Department', picker('department', 'departments')),
-    fld('Device type', select('category', categories)), fld('Model', picker('model', 'models')),
+    fld('Device Type', select('category', categories)), fld('Model', picker('model', 'models')),
     fld('Due from', dateInp('due_from')), fld('Due to', dateInp('due_to')),
     h('div', { class: 'ff' }, h('label', { class: 'check', style: 'padding-top:1.2rem' }, unassigned, 'No technician assigned')),
     h('div', { class: 'ff', style: 'align-self:end' }, h('button', { class: 'btn small', onclick: () => {
@@ -752,8 +760,16 @@ function buildForm(e, row = {}, opts = {}) {
 async function viewForm(el, name, id, params = {}) {
   const e = ent(name);
   let row = {};
+  let similarOf = null;
   if (id) row = (await api('GET', `/api/e/${name}/${id}`)).row;
   else {
+    if (name === 'assets' && params.similar) {
+      // "Add similar": copy model, device class, lifecycle and purchase details; the
+      // tag, serial number and location-specific fields are left for the user.
+      similarOf = (await api('GET', `/api/e/assets/${Number(params.similar)}`)).row;
+      for (const k of SIMILAR_FIELDS) if (similarOf[k] != null && similarOf[k] !== '') row[k] = similarOf[k];
+      row._labels = { ...similarOf._labels };
+    }
     for (const [k, v] of Object.entries(params)) {
       const f = e.fields.find(x => x.name === k);
       if (f) { row[k] = f.type === 'ref' ? Number(v) : v; }
@@ -762,6 +778,13 @@ async function viewForm(el, name, id, params = {}) {
     for (const f of e.fields.filter(x => x.type === 'ref' && row[x.name])) {
       const r = await api('GET', `/api/e/${f.ref}/${row[f.name]}`).catch(() => null);
       if (r) (row._labels = row._labels || {})[f.name] = r.row._label;
+      // New asset from a known model: show the values the model provides.
+      if (r && name === 'assets' && f.name === 'model_id' && !similarOf) {
+        const m = r.row;
+        row.description = row.description || [m.manufacturer, m.model, m.category ? `(${m.category})` : ''].filter(Boolean).join(' ');
+        row.criticality = row.criticality || m.criticality || undefined;
+        row.expected_life_years = row.expected_life_years ?? m.expected_life_years ?? undefined;
+      }
     }
   }
   const form = buildForm(e, row);
@@ -770,14 +793,30 @@ async function viewForm(el, name, id, params = {}) {
       const data = form.values();
       const r = id ? await api('PUT', `/api/e/${name}/${id}`, data) : await api('POST', `/api/e/${name}`, data);
       toast(`${e.label} saved`);
+      if (name === 'assets' && !id) return afterAssetCreated(r.row);
       go(`#/${name}/${r.row.id}`);
     } catch (ex) { fail(ex); }
   };
+  const headActions = [h('button', { class: 'btn', onclick: () => history.back() }, 'Cancel'), h('button', { class: 'btn primary', onclick: save }, 'Save')];
+  if (name === 'assets' || name === 'models') {
+    headActions.unshift(h('button', { class: 'btn', onclick: () => lookupIntoForm(name, form, row) }, '\u{1F50D} Look up device'));
+  }
+  const top = [];
+  if (similarOf) {
+    top.push(h('div', { class: 'banner info' }, h('strong', {}, `Adding another ${similarOf._labels?.model_id || similarOf.description || 'asset'} `),
+      `(copied from ${similarOf.asset_tag}). Model, manufacturer, device class and lifecycle details are filled in. Enter the asset tag and serial number, and choose the owning account for this unit.`));
+  }
   el.replaceChildren(
-    h('div', { class: 'page-head' }, h('h1', {}, id ? `Edit ${e.label}: ${row._label}` : `New ${e.label}`),
-      h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => history.back() }, 'Cancel'), h('button', { class: 'btn primary', onclick: save }, 'Save'))),
+    h('div', { class: 'page-head' }, h('h1', {}, id ? `Edit ${e.label}: ${row._label}` : similarOf ? 'Add Similar Asset' : `New ${e.label}`),
+      h('div', { class: 'actions' }, headActions)),
+    ...top,
     h('div', { class: 'card' }, form),
     h('div', { class: 'actions', style: 'display:flex;gap:.5rem;justify-content:flex-end' }, h('button', { class: 'btn', onclick: () => history.back() }, 'Cancel'), h('button', { class: 'btn primary', onclick: save }, 'Save')));
+  if (similarOf) {
+    // Draw attention to the per-unit fields: identity and owning account.
+    for (const k of ['asset_tag', 'serial_number', 'facility_id', 'department_id']) form.inputs[k]?.inp.closest('.field')?.classList.add('attention');
+    setTimeout(() => (form.inputs.asset_tag?.inp)?.focus(), 50);
+  }
   if (name === 'work_orders' && !id) {
     // Show warranty/contract coverage as soon as an asset is picked.
     const assetInp = form.inputs.asset_id?.inp;
@@ -791,6 +830,218 @@ async function viewForm(el, name, id, params = {}) {
     };
     assetInp?.addEventListener('change', check);
     if (assetInp?.value) check();
+  }
+}
+
+// ======================================================================
+// Add similar asset + PM schedule prompt
+// ======================================================================
+const SIMILAR_FIELDS = ['model_id', 'description', 'criticality', 'risk_score', 'facility_id', 'department_id', 'owner', 'parent_asset_id',
+  'purchase_date', 'install_date', 'purchase_price', 'po_reference', 'warranty_expires', 'contract_id', 'expected_life_years', 'replacement_date',
+  'end_of_support', 'is_loaner', 'is_test_equipment', 'network_segment', 'os_version', 'software_version', 'firmware_version', 'cyber_risk', 'patch_status', 'sbom_reference'];
+
+const addMonthsLocal = (d, m) => { const x = new Date(d + 'T12:00:00'); x.setMonth(x.getMonth() + Number(m)); return x.toISOString().slice(0, 10); };
+
+async function afterAssetCreated(asset) {
+  const model = asset.model_id ? (await api('GET', `/api/e/models/${asset.model_id}`).catch(() => null))?.row : null;
+  const interval = model?.pm_interval_months;
+  const pmBox = h('input', { type: 'checkbox', checked: !!interval });
+  const due = h('input', { type: 'date', value: interval ? addMonthsLocal(asset.install_date || today(), interval) : '', style: 'width:auto' });
+  let procSel = null;
+  if (interval) {
+    const procs = (await api('GET', '/api/e/procedures?' + qs({ view: 'approved', f_model_id: asset.model_id })).catch(() => ({ rows: [] }))).rows;
+    if (procs.length) procSel = h('select', { style: 'width:auto' }, h('option', { value: '' }, '(no procedure)'), procs.map(p => h('option', { value: p.id }, p._label)));
+    if (procSel && procs.length) procSel.value = procs[0].id;
+  }
+  const label = model ? `${model.manufacturer} ${model.model}` : asset.description || 'asset';
+  const body = h('div', { class: 'stack' },
+    h('div', { class: 'banner ok' }, `Asset ${asset.asset_tag} (${label}) saved.`),
+    interval ? h('div', { class: 'card', style: 'margin:0' },
+      h('label', { class: 'check', style: 'padding:0' }, pmBox, `Create a PM schedule every ${interval} month(s)`),
+      h('div', { class: 'toolbar', style: 'margin:.5rem 0 0 1.6rem' }, h('span', { class: 'small muted' }, 'First due'), due, procSel ? [h('span', { class: 'small muted' }, 'Procedure'), procSel] : null),
+      h('div', { class: 'small muted', style: 'margin-left:1.6rem' }, `PM interval from the ${label} model record${model.lookup_source ? ` (${model.lookup_source})` : ''}.`))
+      : h('div', { class: 'small muted' }, model ? 'Tip: set a PM interval on the equipment model (or use Device Lookup) to be offered a PM schedule automatically.' : null),
+    h('p', {}, model ? `Add another ${label}? The model, manufacturer, device class and purchase details carry over; you enter the tag, serial number and owning account.` : 'Add another similar asset?'));
+  const choice = await modal('Asset added', body, [{ label: 'Done', value: 'done' }, { label: '+ Add another similar', cls: 'primary', value: 'similar' }], { sticky: true });
+  if (interval && pmBox.checked) {
+    await api('POST', '/api/e/pm_schedules', { asset_id: asset.id, interval_months: interval, next_due: due.value || today(), procedure_id: procSel?.value || null, active: 1, program: 'Manufacturer Recommended' })
+      .then(() => toast('PM schedule created')).catch(fail);
+  }
+  if (choice === 'similar') {
+    if (location.hash.startsWith(`#/assets/new?similar=${asset.id}`)) route(); else go(`#/assets/new?similar=${asset.id}`);
+  } else go(`#/assets/${asset.id}`);
+}
+
+// ======================================================================
+// Device Lookup (FDA GUDID / classification / recalls + Libre reference)
+// ======================================================================
+const LOOKUP_FIELDS = [
+  ['manufacturer', 'Manufacturer'], ['model', 'Model / Model Number'], ['common_name', 'Common Name / Brand'], ['description', 'Description'],
+  ['category', 'Device Type'], ['risk_class', 'FDA Device Class', ['Class I', 'Class II', 'Class III', 'Unclassified', 'Not classified', 'HDE']],
+  ['criticality', 'Criticality', ['Low', 'Medium', 'High', 'Life Support']], ['pm_interval_months', 'Suggested PM Interval (months)', 'number'],
+  ['expected_life_years', 'Expected Service Life (years)', 'number'], ['fda_device_name', 'FDA Device Name'], ['fda_product_code', 'FDA Product Code'],
+  ['regulation_number', 'FDA Regulation (21 CFR)'], ['medical_specialty', 'Medical Specialty'], ['gmdn_term', 'GMDN Term'], ['udi_di', 'UDI-DI'],
+  ['fda_510k', 'FDA 510(k) Clearance(s)'], ['umdns_code', 'ECRI UMDNS Code / Term'], ['life_sustaining', 'Life-Sustaining / Supporting', 'bool'],
+];
+
+// mode: 'page' (save to catalog / add asset), 'asset' (pick a model for an asset form),
+// 'model' (fill an equipment-model form), 'refresh' (update an existing model).
+function deviceLookupPanel({ initial = {}, mode = 'page', model_id = null, onDone }) {
+  const writer = ['admin', 'supervisor', 'technician'].includes(S.user.role);
+  const modelInp = h('input', { type: 'text', value: initial.model || '', placeholder: 'e.g. 8015, LIFEPAK 15, Force FX' });
+  const mfrInp = h('input', { type: 'text', value: initial.manufacturer || '', placeholder: 'optional, e.g. BD, Stryker' });
+  const status = h('div');
+  const results = h('div');
+  const linksHost = h('div');
+  const panel = h('div', { class: 'lookup' });
+
+  const field = (k, label, kind, value, basis) => {
+    let inp;
+    if (Array.isArray(kind)) { inp = h('select', {}, h('option', { value: '' }, ''), kind.map(o => h('option', {}, o))); inp.value = value ?? ''; }
+    else if (kind === 'bool') inp = h('input', { type: 'checkbox', checked: !!value });
+    else inp = h('input', { type: kind === 'number' ? 'number' : 'text', value: value ?? '', step: 'any' });
+    inp.dataset.k = k;
+    return kind === 'bool' ? h('div', { class: 'field' }, h('label', { class: 'check' }, inp, label), basis ? h('div', { class: 'hint' }, basis) : null)
+      : h('div', { class: 'field' }, h('label', {}, label), inp, basis ? h('div', { class: 'hint' }, `Source: ${basis}`) : null);
+  };
+  const readFields = host => Object.fromEntries($$('[data-k]', host).map(i => [i.dataset.k, i.type === 'checkbox' ? (i.checked ? 1 : 0) : i.value]));
+
+  function renderLinks(list) {
+    linksHost.replaceChildren(h('h3', {}, 'More references'), h('div', { class: 'small muted' }, 'ECRI and AAMI resources require a membership or purchase; OEM manuals are on the manufacturer\'s site.'),
+      h('ul', { class: 'linklist' }, (list || []).map(l => h('li', {}, h('a', { href: l.url, target: '_blank', rel: 'noopener' }, l.name, ' ↗')))));
+  }
+
+  async function review(c) {
+    const host = h('div', { class: 'form' });
+    const b = c.basis || {};
+    host.append(
+      c.warning ? h('div', { class: 'banner warn' }, c.warning) : null,
+      c.note ? h('div', { class: 'banner info' }, c.note) : null,
+      !c.equipment && c.fda_product_code ? h('div', { class: 'banner info' }, c.implant ? 'FDA lists this as an implant - no equipment maintenance suggested.' : 'This looks like an accessory or consumable rather than maintainable equipment - no PM interval suggested.') : null,
+      h('div', { class: 'fields' }, LOOKUP_FIELDS.map(([k, label, kind]) => field(k, label, kind, c[k], b[k]))),
+      c.typical_tests ? h('div', { class: 'small', style: 'margin-top:.6rem' }, h('strong', {}, 'Typical PM tests: '), c.typical_tests) : null,
+      h('div', { class: 'small muted', style: 'margin-top:.4rem' }, 'Suggested PM interval and service life are typical starting points. Confirm with the OEM service manual and your AEM / risk-based maintenance program.'));
+    const recallsHost = h('div');
+    const saveModel = async (extra = {}) => api('POST', '/api/device-lookup/apply', { ...readFields(host), lookup_source: c.fda_product_code ? 'FDA GUDID / Product Classification via openFDA' : 'Libre Device Lookup', ...extra });
+    const btns = [];
+    if (mode === 'page' && writer) {
+      btns.push(h('button', { class: 'btn', onclick: async () => {
+        const r = await saveModel().catch(fail); if (r) { toast(r.created ? 'Equipment model created' : 'Existing equipment model updated'); go(`#/models/${r.row.id}`); }
+      } }, 'Save to equipment models'));
+      btns.push(h('button', { class: 'btn primary', onclick: async () => {
+        const r = await saveModel().catch(fail); if (r) go(`#/assets/new?model_id=${r.row.id}`);
+      } }, 'Save & add asset'));
+    }
+    if (mode === 'asset') btns.push(h('button', { class: 'btn primary', onclick: async () => { const r = await saveModel().catch(fail); if (r) onDone({ model: r.row }); } }, 'Use for this asset'));
+    if (mode === 'model') btns.push(h('button', { class: 'btn primary', onclick: () => onDone({ fields: readFields(host) }) }, 'Fill in the form'));
+    if (mode === 'refresh') {
+      const over = h('input', { type: 'checkbox' });
+      btns.push(h('label', { class: 'check', style: 'padding:0' }, over, 'Overwrite values already on the model'),
+        h('button', { class: 'btn primary', onclick: async () => { const r = await saveModel({ model_id, overwrite: over.checked }).catch(fail); if (r) onDone({ model: r.row }); } }, 'Update model'));
+    }
+    btns.push(h('button', { class: 'btn', onclick: async () => {
+      recallsHost.replaceChildren(h('div', { class: 'muted' }, 'Checking FDA recalls…'));
+      const f = readFields(host);
+      const r = await api('GET', '/api/device-lookup/recalls?' + qs({ model: f.model || c.model, manufacturer: f.manufacturer })).catch(fail);
+      if (!r) return;
+      if (!r.rows.length) return recallsHost.replaceChildren(h('div', { class: 'banner ok' }, r.message || 'No FDA recalls found that mention this model.'));
+      recallsHost.replaceChildren(h('h3', {}, `FDA recalls mentioning ${f.model || c.model}`), h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, ['Recall #', 'Class', 'Initiated', 'Status', 'Reason', ''].map(x => h('th', {}, x)))),
+        h('tbody', {}, r.rows.map(x => h('tr', {}, h('td', { class: 'nowrap' }, x.recall_number), h('td', {}, pill(x.classification)), h('td', { class: 'nowrap' }, x.initiated), h('td', {}, x.status),
+          h('td', { class: 'small' }, String(x.reason || '').slice(0, 220)),
+          h('td', {}, x.already_imported ? h('span', { class: 'pill ok' }, 'In Libre') : writer ? h('button', { class: 'btn small', onclick: async ev => {
+            const m = model_id ? { model_id } : {};
+            const ir = await api('POST', '/api/device-lookup/recall', { ...x, ...m, model: f.model || c.model }).catch(fail);
+            if (ir) { ev.target.replaceWith(h('a', { class: 'pill ok', href: `#/recalls/${ir.row.id}`, target: '_blank' }, 'Imported')); toast(`Recall ${x.recall_number} imported - use "Find Affected Assets" on it`); }
+          } }, 'Import') : null)))))));
+    } }, 'Check FDA recalls'));
+    results.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('button', { class: 'btn small', onclick: () => search(false) }, '← Back to results'),
+      h('strong', {}, `${c.manufacturer || ''} ${c.model || ''}`)), host, h('div', { class: 'toolbar', style: 'margin-top:1rem' }, btns), recallsHost));
+    renderLinks(c.links);
+  }
+
+  let last = null;
+  async function search(refresh) {
+    if (!modelInp.value.trim()) return toast('Enter a model or model number', true);
+    if (refresh !== false || !last) {
+      status.replaceChildren(h('div', { class: 'muted' }, 'Searching your catalog and the FDA device database…'));
+      results.replaceChildren();
+      try { last = await api('GET', '/api/device-lookup?' + qs({ model: modelInp.value, manufacturer: mfrInp.value, refresh: refresh ? 1 : '' })); } catch (e) { status.replaceChildren(); return fail(e); }
+    }
+    const r = last;
+    status.replaceChildren(r.message ? h('div', { class: `banner ${r.online ? 'info' : 'warn'}` }, r.message) : null,
+      r.hidden ? h('div', { class: 'small muted' }, `${r.hidden} result(s) from other manufacturers hidden. Clear the manufacturer to see everything.`) : null,
+      r.online ? h('div', { class: 'small muted' }, `Sources: ${r.sources.map(s => `${s.name} (${s.records})`).join(', ')}. Data from openFDA is unvalidated - review before saving.`) : null);
+    const local = r.local.length ? h('div', { class: 'card' }, h('h3', {}, 'Already in your equipment catalog'),
+      r.local.map(m => h('div', { class: 'lookup-cand' }, h('div', { class: 'main' }, h('strong', {}, `${m.manufacturer} ${m.model}`), m.category ? ` · ${m.category}` : '', m.risk_class ? [' ', pill(m.risk_class)] : null,
+        h('div', { class: 'small muted' }, [m.common_name, m.pm_interval_months ? `PM every ${m.pm_interval_months} mo` : null, `${m.asset_count} asset(s)`].filter(Boolean).join(' · '))),
+        mode === 'asset' ? h('button', { class: 'btn small primary', onclick: () => onDone({ model: m }) }, 'Use') :
+          mode === 'page' ? [h('a', { class: 'btn small', href: `#/models/${m.id}` }, 'Open'), writer ? h('a', { class: 'btn small primary', href: `#/assets/new?model_id=${m.id}` }, 'Add asset') : null] : null))) : null;
+    const cands = r.candidates.length ? h('div', { class: 'card' }, h('h3', {}, 'FDA device database matches'),
+      r.candidates.map(c => h('div', { class: 'lookup-cand' + (c.equipment ? '' : ' dim') },
+        h('div', { class: 'main' },
+          h('div', {}, h('strong', {}, `${c.manufacturer} — ${c.model}`), ' ', c.risk_class ? pill(c.risk_class) : null, c.life_sustaining ? [' ', h('span', { class: 'pill bad' }, 'Life-sustaining')] : null,
+            !c.equipment ? [' ', h('span', { class: 'pill' }, c.implant ? 'Implant' : 'Accessory / consumable?')] : null, c.warning ? [' ', h('span', { class: 'pill warn' }, 'Verify type')] : null,
+            c.source === '510k' ? [' ', h('span', { class: 'pill info', title: 'Found in FDA 510(k) clearances; no UDI records' }, 'Older model · 510(k)')] : null),
+          h('div', {}, [c.common_name, c.category].filter(Boolean).join(' · ')),
+          h('div', { class: 'small muted' }, [c.gmdn_term ? `GMDN: ${c.gmdn_term}` : null, c.fda_product_code ? `FDA ${c.fda_product_code} ${c.fda_device_name || ''}` : null, c.regulation_number ? `21 CFR ${c.regulation_number}` : null,
+            c.source === 'udi' && c.variants > 1 ? `${c.variants} UDI records` : null, c.source === '510k' ? `${c.variants} clearance(s) ${String(c.first_cleared || '').slice(0, 4)}–${String(c.last_cleared || '').slice(0, 4)}` : null].filter(Boolean).join(' · ')),
+          c.pm_interval_months ? h('div', { class: 'small' }, `Suggested: PM every ${c.pm_interval_months} months · ${c.expected_life_years}-year life · ${c.criticality} criticality`) : null),
+        h('button', { class: 'btn small primary', onclick: () => review(c) }, 'Select')))) : null;
+    const manual = h('div', { class: 'card' }, h('h3', {}, 'Not listed?'), h('p', { class: 'small muted' }, 'Enter the details yourself, then save them to your equipment catalog.'),
+      h('button', { class: 'btn', onclick: () => review({ manufacturer: mfrInp.value, model: modelInp.value, equipment: true, basis: {}, links: r.links }) }, 'Enter manually'));
+    results.replaceChildren(local, cands, manual);
+    renderLinks(r.links);
+  }
+
+  panel.append(h('div', { class: 'card form' }, h('div', { class: 'lookup-search' },
+    h('div', {}, h('label', {}, 'Model or model number'), modelInp), h('div', {}, h('label', {}, 'Manufacturer'), mfrInp),
+    h('button', { class: 'btn primary', onclick: () => search() }, 'Look up'),
+    h('button', { class: 'btn small', title: 'Ignore cached results and ask the FDA database again', onclick: () => search(true) }, 'Refresh')), status),
+  h('div', { class: 'lookup-cols' }, results, h('div', { class: 'card' }, linksHost)));
+  [modelInp, mfrInp].forEach(i => i.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); search(); } }));
+  renderLinks([]);
+  if (initial.model) setTimeout(() => search(), 0);
+  setTimeout(() => modelInp.focus(), 50);
+  return panel;
+}
+
+function viewDeviceLookup(el, params) {
+  el.replaceChildren(h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Device Lookup'),
+    h('div', { class: 'muted' }, 'Type a model or model number (and optionally the manufacturer). Libre checks your catalog and the FDA device database (GUDID, product classification, recalls) and suggests device type, FDA class, criticality, PM interval and service life.'))),
+  deviceLookupPanel({ initial: { model: params.model || '', manufacturer: params.manufacturer || '' }, mode: 'page' }));
+}
+
+// Dialog used from the asset form, model form and model page.
+function deviceLookupDialog(initial, mode = 'refresh') {
+  let closeFn;
+  const done = v => closeFn && closeFn(v);
+  const panel = deviceLookupPanel({ initial, mode, model_id: initial.model_id || null, onDone: done });
+  return modal('Device Lookup', panel, [{ label: 'Close', value: null }], { wide: true, onOpen: c => { closeFn = c; } });
+}
+
+async function lookupIntoForm(name, form, row) {
+  const val = k => form.inputs[k]?.inp;
+  if (name === 'assets') {
+    const pickerText = val('model_id') ? $('input', val('model_id')).value : '';
+    const [mf, ...rest] = pickerText.split(' - ');
+    const r = await deviceLookupDialog({ model: rest.join(' - ') || pickerText || '', manufacturer: rest.length ? mf : '' }, 'asset');
+    if (!r?.model) return;
+    const m = r.model;
+    const picker = val('model_id');
+    picker.value = m.id; $('input', picker).value = m._label || `${m.manufacturer} - ${m.model}`;
+    const setIfEmpty = (k, v) => { const i = val(k); if (i && !i.value && v != null && v !== '') i.value = v; };
+    setIfEmpty('description', [m.manufacturer, m.model, m.category ? `(${m.category})` : ''].filter(Boolean).join(' '));
+    setIfEmpty('criticality', m.criticality);
+    setIfEmpty('expected_life_years', m.expected_life_years);
+    toast(`Model set to ${m.manufacturer} ${m.model}`);
+  } else {
+    const r = await deviceLookupDialog({ model: val('model')?.value || row.model || '', manufacturer: val('manufacturer')?.value || row.manufacturer || '' }, 'model');
+    if (!r?.fields) return;
+    for (const [k, v] of Object.entries(r.fields)) {
+      const i = val(k); if (!i || v === '' || v == null) continue;
+      if (i.type === 'checkbox') i.checked = !!Number(v); else i.value = v;
+    }
+    toast('Form filled from lookup - review and Save');
   }
 }
 
@@ -840,6 +1091,7 @@ async function viewDetail(el, name, id) {
     actions.push(h('a', { class: 'btn primary', href: `#/work_orders/new?asset_id=${row.id}` }, '+ Work Order'),
       h('a', { class: 'btn', href: `#/pm_schedules/new?asset_id=${row.id}` }, '+ PM Schedule'),
       h('a', { class: 'btn', href: `#/labels?ids=${row.id}` }, 'Print Label'));
+    if (e.canWrite) actions.push(h('a', { class: 'btn', href: `#/assets/new?similar=${row.id}` }, '+ Add Similar'));
   }
   if (name === 'procedures') {
     if (row.status === 'Draft' && isMgr) actions.push(h('button', { class: 'btn primary', onclick: () => procAct(id, 'approve', 'Approve this procedure? It will be locked, and any previously approved version will be retired.') }, 'Approve'));
@@ -886,6 +1138,12 @@ async function viewDetail(el, name, id) {
       if (!r) return;
       await api('POST', `/api/pm/${id}/defer`, r).then(() => { toast('Deferral approved'); reload(); }).catch(fail);
     } }, 'Approve Deferral'));
+  }
+  if (name === 'models' && e.canWrite) {
+    actions.push(h('button', { class: 'btn', onclick: async () => {
+      const saved = await deviceLookupDialog({ model: row.model, manufacturer: row.manufacturer, model_id: row.id });
+      if (saved) { toast('Model updated from lookup'); reload(); }
+    } }, '\u{1F50D} Look Up / Refresh'));
   }
   if (name === 'models' && isMgr) {
     actions.push(h('button', { class: 'btn', onclick: async () => {
@@ -1196,7 +1454,7 @@ async function viewReports(el, name, params) {
   if (!name) {
     el.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Reports & KPIs')),
       h('div', { class: 'grid g3' }, S.meta.reports.map(r => h('a', { class: 'kpi', href: `#/reports/${r.key}` }, h('div', { style: 'font-weight:600' }, r.title),
-        h('div', { class: 'l' }, r.filters.length ? `Filters: ${r.filters.map(f => f.replace('_id', '')).join(', ')}` : 'No filters')))));
+        h('div', { class: 'l' }, r.filters.length ? `Filters: ${r.filters.map(f => f === 'category' ? 'device type' : f.replace('_id', '')).join(', ')}` : 'No filters')))));
     return;
   }
   const meta = S.meta.reports.find(r => r.key === name);
@@ -1215,10 +1473,13 @@ async function viewReports(el, name, params) {
     else if (f === 'type') inp = h('select', {}, h('option', { value: '' }, 'All types'), ent('work_orders').fields.find(x => x.name === 'type').options.map(o => h('option', {}, o)));
     else if (f === 'result') inp = h('select', {}, h('option', { value: '' }, 'All'), h('option', {}, 'Pass'), h('option', {}, 'Fail'));
     else if (f === 'status') inp = h('select', {}, h('option', { value: '' }, 'All'), ent('assets').fields.find(x => x.name === 'status').options.map(o => h('option', {}, o)));
-    else inp = h('input', { type: 'text', value: params[f] || '' });
+    else if (f === 'category') {
+      const types = (await api('GET', '/api/distinct/models/category').catch(() => ({ values: [] }))).values;
+      inp = h('select', {}, h('option', { value: '' }, 'All device types'), types.map(o => h('option', {}, o)));
+    } else inp = h('input', { type: 'text', value: params[f] || '' });
     if (inp.tagName === 'SELECT' && params[f]) inp.value = params[f];
     filters[f] = inp;
-    const flabel = { utl_status: 'status', from: 'from', to: 'to' }[f] || f.replace('_id', '').replace('_', ' ');
+    const flabel = { utl_status: 'status', from: 'from', to: 'to', category: 'device type' }[f] || f.replace('_id', '').replace('_', ' ');
     filterNodes.push(h('div', { style: 'min-width:170px' }, h('label', { class: 'small muted' }, flabel), inp));
   }
   const vals = () => Object.fromEntries(Object.entries(filters).map(([k, i]) => [k, i.value ?? '']));

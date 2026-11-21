@@ -64,6 +64,7 @@ Copy `config/libre.config.example.json` to `config/libre.config.json` and edit i
 | `https.enabled` | `false` | Built-in HTTPS. Set `certFile` and `keyFile` to PEM files. |
 | `https.redirectHttpPort` | `0` | Optionally listen on this port (e.g. 80) and redirect to HTTPS. |
 | `trustProxy` | `false` | Set `true` behind a reverse proxy, to use `X-Forwarded-For` and Secure cookies. |
+| `lookup.openFdaApiKey` | `""` | Optional free openFDA API key (https://open.fda.gov/apis/authentication/) for heavier Device Lookup use. Not needed for normal use. |
 | `sessionHours` | `12` | How long users stay signed in. |
 | `maxUploadMB` | `50` | Largest attachment allowed. |
 | `backup.enabled` / `hour` / `keep` / `dir` | `true` / `2` / `14` / `data/backups` | Automatic daily backup. |

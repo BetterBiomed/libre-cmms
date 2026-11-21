@@ -46,6 +46,14 @@ Field definitions: `GET /api/meta` or `server/schema.js`.
 | POST | `/api/parts/{id}/stock` | `{ type: Receive/Adjust/Return/Count, quantity, unit_cost?, note? }` |
 | POST | `/api/po/{id}/receive` | |
 
+## Device Lookup
+| Method | Path | Body / query |
+|---|---|---|
+| GET | `/api/device-lookup` | `?model=&manufacturer=&refresh=1` → `{ local: [models], candidates: [{ manufacturer, model, common_name, category, risk_class, criticality, pm_interval_months, expected_life_years, fda_product_code, fda_device_name, regulation_number, medical_specialty, gmdn_term, udi_di, life_sustaining, equipment, confidence, warning, basis, links }], links, online, message }` |
+| GET | `/api/device-lookup/recalls` | `?model=&manufacturer=` → FDA enforcement reports mentioning the model |
+| POST | `/api/device-lookup/apply` | candidate fields (+ `model_id`, `overwrite`) → creates or fills an equipment model |
+| POST | `/api/device-lookup/recall` | an FDA recall row (+ `model_id`) → creates a Libre recall |
+
 ## Inventory Mode & Unable To Locate
 | Method | Path | Body |
 |---|---|---|

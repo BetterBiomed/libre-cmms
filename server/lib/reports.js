@@ -152,7 +152,7 @@ const REPORTS = {
           f.name facility, d.name department, a.room, a.install_date, a.purchase_price, a.warranty_expires, a.replacement_date
         FROM assets a LEFT JOIN models m ON m.id = a.model_id LEFT JOIN facilities f ON f.id = a.facility_id LEFT JOIN departments d ON d.id = a.department_id
         ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY a.asset_tag`).all(...p);
-      return { columns: cols('asset_tag:Asset Tag,control_number:Control #,manufacturer:Manufacturer,model:Model,category:Category,serial_number:Serial,status:Status,criticality:Criticality,facility:Facility,department:Department,room:Room,install_date:Installed:date,purchase_price:Price:money,warranty_expires:Warranty:date,replacement_date:Replace By:date'), rows };
+      return { columns: cols('asset_tag:Asset Tag,control_number:Control #,manufacturer:Manufacturer,model:Model,category:Device Type,serial_number:Serial,status:Status,criticality:Criticality,facility:Facility,department:Department,room:Room,install_date:Installed:date,purchase_price:Price:money,warranty_expires:Warranty:date,replacement_date:Replace By:date'), rows };
     },
   },
   pm_compliance: {
@@ -267,7 +267,7 @@ const REPORTS = {
         r.availability_pct = r2(100 * (1 - r.downtime_hours / (r.assets * days * 24)));
         r.mttr_hours = r2(r.mttr_hours);
       }
-      return { columns: cols('manufacturer:Manufacturer,model:Model,category:Category,assets:Assets:int,failures:Repairs:int,failures_per_asset_year:Repairs/Asset/Yr:number,mtbf_days:MTBF (days):number,mttr_hours:MTTR (hrs):number,downtime_hours:Downtime (hrs):number,availability_pct:Availability %:pct,npf:No Problem Found:int'), rows };
+      return { columns: cols('manufacturer:Manufacturer,model:Model,category:Device Type,assets:Assets:int,failures:Repairs:int,failures_per_asset_year:Repairs/Asset/Yr:number,mtbf_days:MTBF (days):number,mttr_hours:MTTR (hrs):number,downtime_hours:Downtime (hrs):number,availability_pct:Availability %:pct,npf:No Problem Found:int'), rows };
     },
   },
   repeat_repairs: {
@@ -308,7 +308,7 @@ const REPORTS = {
         r.lifetime_cost = r2(r.lifetime_cost);
       }
       rows.sort((a, b) => b.score - a.score);
-      return { columns: cols('score:Score:int,recommendation:Recommendation,asset_tag:Asset,manufacturer:Manufacturer,model:Model,category:Category,department:Department,criticality:Criticality,age_years:Age (yrs):number,life:Exp. Life:number,eos:End of Support:date,failures_12m:Repairs 12mo:int,lifetime_cost:Lifetime Maint. Cost:money,purchase_price:Acquisition:money'), rows };
+      return { columns: cols('score:Score:int,recommendation:Recommendation,asset_tag:Asset,manufacturer:Manufacturer,model:Model,category:Device Type,department:Department,criticality:Criticality,age_years:Age (yrs):number,life:Exp. Life:number,eos:End of Support:date,failures_12m:Repairs 12mo:int,lifetime_cost:Lifetime Maint. Cost:money,purchase_price:Acquisition:money'), rows };
     },
   },
   technician_productivity: {
