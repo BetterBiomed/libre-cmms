@@ -29,7 +29,8 @@ function dashboard(db, user) {
   const series = [];
   for (let i = 5; i >= 0; i--) {
     const start = addMonths(monthStart, -i);
-    const end = addMonths(start, 1);
+    // The current month counts only PMs due so far; PMs due later this month are not late yet.
+    const end = i === 0 ? addDays(t, 1) : addMonths(start, 1);
     const r = one(`SELECT COUNT(*) total, SUM(CASE WHEN status IN ${DONE} THEN 1 ELSE 0 END) done,
       SUM(CASE WHEN status IN ${DONE} AND substr(completed_at,1,10) <= date(due_date, '+' || COALESCE((SELECT grace_days FROM pm_schedules s WHERE s.id = pm_schedule_id), 30) || ' days') THEN 1 ELSE 0 END) ontime
       FROM work_orders WHERE pm_schedule_id IS NOT NULL AND status <> 'Cancelled' AND due_date >= ? AND due_date < ?`, start, end);
