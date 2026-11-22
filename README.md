@@ -37,14 +37,15 @@ On Windows you can double-click `start-libre.cmd`. To install as a service, see 
 ## Highlights
 
 * Device Lookup: type a model number and Libre fills in manufacturer, device type, FDA class, product code, criticality and a suggested PM interval from the FDA device databases and its maintenance reference, plus recalls and links to ECRI, AAMI and OEM resources; add several of the same device quickly with "Add similar"
-* Inventory Mode: department scanning with red/yellow flags (recalls, open repairs, previous Unable To Locate, end-of-life, PMs due), current-location updates, and Unable To Locate tracking and reports
+* Inventory Mode: department scanning with red/yellow flags (recalls, open repairs, previous Unable To Locate, end-of-life, PMs due), current-location updates, and Unable To Locate tracking and reports, with PDF reports emailed to each department manager
 * Asset management: models, locations, parent/child components, warranty, lifecycle, network/cybersecurity data, QR code and/or barcode labels, CSV import with duplicate detection
 * Work orders: 11 types, labor and parts costing, failure/cause/action codes, warranty/contract coverage check, technician and supervisor e-signatures, SLA escalation, filter-and-bulk-assign to technicians or team queues
 * Preventive maintenance: schedules, AEM programs, automatic WO generation, deferral approvals, compliance tracking, and a **PM Planner** to forecast and load-balance PM work month by month
 * Guided procedures: measurement limits and tolerances, conditional troubleshooting steps, version control and approval, automatic corrective WO on failure
 * Test equipment calibration checks, recalls with serial-number matching, incidents
-* Parts inventory, purchase orders, vendors, contracts
+* Parts inventory, purchase orders with a supervisor e-signature above an admin-set approval limit, vendors, contracts
 * Public service-request portal with status tracking and satisfaction surveys
+* Email through your own mail server: Unable To Locate reports to department managers, monthly PM progress to technicians and teams, and self-service Forgot Password
 * Dashboard plus 15 reports (PM compliance, MTBF/MTTR, cost, replacement priority, cybersecurity, and more) exporting to CSV/Excel and PDF
 * Roles: admin, supervisor, technician, requester, viewer. Full audit trail.
 
