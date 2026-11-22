@@ -16,6 +16,7 @@ const logic = require('./lib/logic');
 const reports = require('./lib/reports');
 const inventory = require('./lib/inventory');
 const deviceLookup = require('./lib/device-lookup');
+const pmPlanner = require('./lib/pm-planner');
 const { HttpError } = crud;
 
 const VERSION = require('../package.json').version;
@@ -355,6 +356,13 @@ route('POST', '/api/import/:entity', async (ctx, p) => {
 });
 
 // Workflows
+// PM Planner (load balancing)
+const notRequester = ctx => need(ctx.user.role !== 'requester');
+route('GET', '/api/pm/forecast', (ctx) => { notRequester(ctx); return pmPlanner.forecast(ctx, ctx.query); });
+route('GET', '/api/pm/plan', (ctx) => { notRequester(ctx); return pmPlanner.list(ctx, ctx.query); });
+route('GET', '/api/pm/unscheduled', (ctx) => { notRequester(ctx); return pmPlanner.unscheduled(ctx, ctx.query); });
+route('POST', '/api/pm/reschedule', async (ctx) => pmPlanner.reschedule(ctx, await jsonBody(ctx.req)));
+route('POST', '/api/pm/schedule-assets', async (ctx) => pmPlanner.scheduleAssets(ctx, await jsonBody(ctx.req)));
 // Device Lookup (FDA GUDID / classification / recalls + Libre reference table)
 const blockRequester = ctx => need(!['requester'].includes(ctx.user.role));
 route('GET', '/api/device-lookup', async (ctx) => { blockRequester(ctx); return deviceLookup.lookup(ctx, ctx.query); });

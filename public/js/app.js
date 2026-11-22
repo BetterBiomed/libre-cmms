@@ -258,7 +258,8 @@ async function startApp() {
     S.user.role !== 'requester' ? h('a', { href: '#/scan' }, 'Scan / Find Asset') : null,
     S.user.role !== 'requester' ? h('a', { href: '#/inventory' }, 'Inventory Mode') : null,
     S.user.role !== 'requester' ? h('a', { href: '#/lookup' }, 'Device Lookup') : null,
-    ...order.filter(g => groups[g]).flatMap(g => [h('div', { class: 'grp' }, g), ...groups[g].map(e => h('a', { href: `#/list/${e.name}` }, e.plural))]),
+    ...order.filter(g => groups[g]).flatMap(g => [h('div', { class: 'grp' }, g), ...groups[g].flatMap(e => [h('a', { href: `#/list/${e.name}` }, e.plural),
+      e.name === 'pm_schedules' && S.user.role !== 'requester' ? h('a', { href: '#/pm-planner' }, 'PM Planner') : null])]),
     S.user.role !== 'requester' ? [h('div', { class: 'grp' }, 'Analysis'), h('a', { href: '#/reports' }, 'Reports & KPIs')] : null,
     isMgr ? h('a', { href: '#/audit' }, 'Audit Trail') : null,
     S.user.role === 'admin' ? [h('div', { class: 'grp' }, 'Administration'), h('a', { href: '#/settings' }, 'Settings & Backups')] : null,
@@ -337,6 +338,7 @@ async function route() {
     if (parts[0] === 'settings') return await viewSettings(content);
     if (parts[0] === 'scan') return viewScan(content);
     if (parts[0] === 'lookup') return viewDeviceLookup(content, params);
+    if (parts[0] === 'pm-planner') return await viewPmPlanner(content, params);
     if (parts[0] === 'inventory') return parts[1] ? await viewInventory(content, Number(parts[1])) : await viewInventoryStart(content);
     if (parts[0] === 'run') return await viewRun(content, Number(parts[1]));
     if (parts[0] === 'labels') return await viewLabels(content, params);
@@ -428,6 +430,7 @@ async function viewList(el, name, params) {
   viewSel?.addEventListener('change', () => { state.view = viewSel.value; state.offset = 0; load(); });
   const isMgr = ['admin', 'supervisor'].includes(S.user.role);
   const extra = [];
+  if (name === 'pm_schedules') extra.push(h('a', { class: 'btn primary', href: '#/pm-planner' }, '\u{1F4C5} PM Planner'));
   if (name === 'work_orders' && isMgr) extra.push(h('button', { class: 'btn', onclick: async () => {
     const r = await api('POST', '/api/pm/generate', {}).catch(fail); if (r) { toast(`${r.created.length} PM work order(s) generated`); load(); }
   } }, 'Generate due PMs'));
@@ -1800,6 +1803,212 @@ async function viewInventorySummary(el, S2) {
     utl.length ? h('div', { class: 'card' }, h('h2', {}, 'Unable To Locate'), renderTable(ent('utl_events'), utl, { columns: ent('utl_events').fields.filter(f => ['asset_id', 'status', 'department_id', 'resolved_at'].includes(f.name)) })) : null,
     h('div', { class: 'card' }, h('h2', {}, 'Scans'), renderTable(ent('inventory_scans'), scans.sort((a, b) => ({ Red: 0, Yellow: 1 }[a.flag_level] ?? 2) - ({ Red: 0, Yellow: 1 }[b.flag_level] ?? 2)),
       { columns: ent('inventory_scans').fields.filter(f => ['asset_id', 'scanned_code', 'room', 'result', 'flag_level', 'flag_text'].includes(f.name)), onRow: r => r.asset_id && go(`#/assets/${r.asset_id}`) })));
+}
+
+// ======================================================================
+// PM Planner (load balancing)
+// ======================================================================
+const monthLabel = (ym, long = false) => new Date(`${ym}-15T12:00:00`).toLocaleString(undefined, { month: long ? 'long' : 'short', year: long ? 'numeric' : '2-digit' });
+
+// Side-by-side monthly bars with an even-distribution target line. `after` (optional)
+// draws a second bar per month for a before/after preview.
+function planChart(fc, { measure = 'count', after = null, selected = null, onPick = null } = {}) {
+  const val = m => (measure === 'hours' ? m.hours : m.count);
+  const avg = measure === 'hours' ? fc.average.hours : fc.average.count;
+  const afterBy = after ? Object.fromEntries(after.months.map(m => [m.month, m])) : null;
+  const max = Math.max(1, ...fc.months.map(val), ...(after ? after.months.map(val) : []), avg * 1.2);
+  const pct = v => `${(v / max) * 100}%`;
+  const cls = v => (!avg ? '' : v > avg * 1.15 ? 'over' : v < avg * 0.85 ? 'under' : 'even');
+  const cols = fc.months.map(m => {
+    const v = val(m); const a = afterBy ? val(afterBy[m.month]) : null;
+    const top = Object.entries(m.by_category).sort((x, y) => y[1] - x[1]).slice(0, 4).map(([k, n]) => `${k}: ${n}`).join('\n');
+    return h('div', { class: 'pcol' + (selected === m.month ? ' sel' : '') + (onPick ? ' click' : ''), title: `${monthLabel(m.month, true)}\n${m.count} PMs${m.completed ? ` (${m.completed} already completed)` : ''}, about ${m.hours} labor hours${m.life_support ? `\n${m.life_support} life-support` : ''}${top ? `\n\n${top}` : ''}`,
+      onclick: onPick ? () => onPick(m.month) : null },
+      h('div', { class: 'pbars' },
+        h('div', { class: 'pavgmark', style: `bottom:${pct(avg)}` }),
+        h('div', { class: `pbar ${after ? 'before' : cls(v)}`, style: `height:${pct(v)}` }, h('span', {}, measure === 'hours' ? Math.round(v) : v)),
+        after ? h('div', { class: `pbar ${cls(a)}`, style: `height:${pct(a)}` }, h('span', {}, measure === 'hours' ? Math.round(a) : a)) : null),
+      h('div', { class: 'plabel' }, monthLabel(m.month)));
+  });
+  return h('div', { class: 'pchart' }, h('div', { class: 'pcols' }, cols),
+    h('div', { class: 'small muted' }, h('span', { class: 'pavgkey' }), ` even distribution: ${measure === 'hours' ? Math.round(avg) : avg} per month`, after ? [' · ', h('span', { class: 'pkey before' }), ' before ', h('span', { class: 'pkey' }), ' after'] : null));
+}
+
+const balanceText = cv => (cv <= 15 ? ['Even', 'ok'] : cv <= 30 ? ['Somewhat uneven', 'warn'] : ['Uneven', 'bad']);
+
+async function viewPmPlanner(el, params) {
+  const thisMonth = today().slice(0, 7);
+  const st = { months: Number(params.months) || 12, measure: 'count', month: null, tab: 'month', offset: 0, limit: 100, total: 0, rows: [],
+    selected: new Map(), allMatching: false, filters: {}, labels: {} };
+  const writer = ['admin', 'supervisor', 'technician'].includes(S.user.role);
+  const isMgr = ['admin', 'supervisor'].includes(S.user.role);
+  const fq = () => ({ ...st.filters, months: st.months, start: thisMonth });
+
+  // ---- filters ----
+  const picker = (key, ref, extra) => {
+    const p = refPicker({ ref }, null, '', extra);
+    p.addEventListener('change', () => { st.filters[key] = p.value || ''; refreshAll(); });
+    return p;
+  };
+  const types = (await api('GET', '/api/distinct/models/category').catch(() => ({ values: [] }))).values;
+  const typeSel = h('select', {}, h('option', { value: '' }, 'All device types'), types.map(t => h('option', {}, t)));
+  typeSel.addEventListener('change', () => { st.filters.category = typeSel.value; refreshAll(); });
+  const progSel = h('select', {}, h('option', { value: '' }, 'All programs'), ent('pm_schedules').fields.find(f => f.name === 'program').options.map(o => h('option', {}, o)));
+  progSel.addEventListener('change', () => { st.filters.program = progSel.value; refreshAll(); });
+  const horizon = h('select', { style: 'width:auto' }, [12, 18, 24].map(n => h('option', { value: n }, `${n} months`)));
+  horizon.value = String(st.months);
+  horizon.addEventListener('change', () => { st.months = Number(horizon.value); refreshChart(); });
+  const measureSel = h('div', { class: 'seg' }, [['count', 'PM work orders'], ['hours', 'Labor hours']].map(([v, l]) =>
+    h('button', { class: v === st.measure ? 'on p' : '', onclick: ev => { st.measure = v; $$('button', ev.target.parentElement).forEach(b => b.className = b === ev.target ? 'on p' : ''); drawChart(); } }, l)));
+  const fld = (label, input) => h('div', { class: 'ff' }, h('label', {}, label), input);
+  const filters = h('div', { class: 'card filters' },
+    fld('Facility', picker('facility_id', 'facilities')), fld('Department (owning)', picker('department_id', 'departments')), fld('Device Type', typeSel),
+    fld('Team', picker('team_id', 'teams')), fld('Technician', picker('assigned_to', 'users', { filter: { view: 'techs' } })), fld('Program', progSel));
+
+  // ---- chart ----
+  let fc = null;
+  const chartHost = h('div');
+  const stats = h('div', { class: 'inv-head' });
+  function drawChart() {
+    if (!fc) return;
+    const [bt, bc] = balanceText(fc.balance_cv);
+    const k = (v, l, c = '') => h('div', { class: `kpi ${c}` }, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l));
+    stats.replaceChildren(k(fc.average.count, 'Average PMs / month'), k(fc.average.hours, 'Average labor hours / month'),
+      k(fc.peak ? monthLabel(fc.peak, true) : '-', 'Busiest month'), k(bt, `Balance (variation ${fc.balance_cv}%)`, bc),
+      k(fc.overdue.count, 'Overdue now (not in chart)', fc.overdue.count ? 'bad' : 'ok'), k(fc.schedules, 'Active PM schedules'));
+    chartHost.replaceChildren(planChart(fc, { measure: st.measure, selected: st.month, onPick: m => { st.month = m; st.tab = 'month'; drawChart(); refreshList(); } }),
+      h('div', { class: 'small muted', style: 'margin-top:.4rem' }, 'Bars are colored against the even-distribution line: ', h('span', { class: 'pill bad' }, 'over 115%'), ' ', h('span', { class: 'pill ok' }, 'within ±15%'), ' ', h('span', { class: 'pill info' }, 'under 85%'),
+        '. Click a month to list its PMs. Hover a bar for the device types due.'));
+  }
+  async function refreshChart() {
+    fc = await api('GET', '/api/pm/forecast?' + qs(fq()));
+    if (!st.month || !fc.months.some(m => m.month === st.month)) st.month = fc.peak || fc.months[0].month;
+    drawChart();
+  }
+
+  // ---- list ----
+  const tabs = h('div', { class: 'tabs' });
+  const listHost = h('div');
+  const bar = h('div', { class: 'bulkbar', style: 'display:none' });
+  const keyOf = r => (st.tab === 'unscheduled' ? `a${r.asset_id}` : `${r.id}|${r.occurrence}`);
+  const listQuery = () => ({ ...st.filters, ...(st.tab === 'month' ? { month: st.month } : st.tab === 'overdue' ? { overdue: 1 } : {}) });
+  function drawTabs() {
+    const t = (key, label) => h('button', { class: st.tab === key ? 'active' : '', onclick: () => { st.tab = key; st.offset = 0; clearSel(); refreshList(); } }, label);
+    tabs.replaceChildren(t('month', `Due in ${st.month ? monthLabel(st.month, true) : 'month'}`), t('all', 'All PM schedules'), t('overdue', 'Overdue'), t('unscheduled', 'Assets without a PM schedule'));
+  }
+  const clearSel = () => { st.selected.clear(); st.allMatching = false; };
+  async function refreshList() {
+    drawTabs();
+    const q = { ...listQuery(), offset: st.offset, limit: st.limit };
+    const r = st.tab === 'unscheduled' ? await api('GET', '/api/pm/unscheduled?' + qs(q)) : await api('GET', '/api/pm/plan?' + qs(q));
+    st.total = r.total; st.rows = r.rows;
+    const unsched = st.tab === 'unscheduled';
+    const head = unsched ? ['Asset', 'Model', 'Device Type', 'Department', 'Criticality', 'Model PM interval']
+      : ['Asset', 'Model', 'Device Type', 'Department', st.tab === 'month' ? 'Due in month' : 'Next due', 'Every', 'Team / Technician', 'Est. hours'];
+    const allOnPage = r.rows.length && r.rows.every(x => st.selected.has(keyOf(x)));
+    const headBox = writer ? h('input', { type: 'checkbox', checked: allOnPage, onchange: ev => { r.rows.forEach(x => (ev.target.checked ? st.selected.set(keyOf(x), x) : st.selected.delete(keyOf(x)))); st.allMatching = false; refreshListOnly(); } }) : null;
+    function refreshListOnly() { drawRows(); drawBar(); }
+    const tbody = h('tbody');
+    function drawRows() {
+      tbody.replaceChildren(...r.rows.map(x => {
+        const k = keyOf(x);
+        const cb = writer ? h('input', { type: 'checkbox', checked: st.selected.has(k), onchange: ev => { if (ev.target.checked) st.selected.set(k, x); else st.selected.delete(k); st.allMatching = false; drawBar(); tr.classList.toggle('selected', ev.target.checked); } }) : null;
+        const cells = unsched
+          ? [h('a', { href: `#/assets/${x.asset_id}` }, x.asset_tag), `${x.manufacturer || ''} ${x.model || ''}`, x.category || '', x.department || '', pill(x.criticality), x.pm_interval_months ? `${x.pm_interval_months} mo` : h('span', { class: 'muted' }, 'not set')]
+          : [h('a', { href: `#/assets/${x.asset_id}` }, x.asset_tag), `${x.manufacturer || ''} ${x.model || ''}`, x.category || '', x.department || '',
+            x.occurrence < today() ? h('span', { class: 'pill bad' }, x.occurrence) : x.occurrence, `${x.interval_months} mo`, [x.team, x.technician].filter(Boolean).join(' / '), x.est_hours];
+        const tr = h('tr', { class: st.selected.has(k) ? 'selected' : '' }, writer ? h('td', { class: 'sel' }, cb) : null, cells.map(c => h('td', {}, c)));
+        return tr;
+      }));
+    }
+    drawRows();
+    listHost.replaceChildren(r.rows.length ? h('div', { class: 'table-wrap' }, h('table', {}, h('thead', {}, h('tr', {}, writer ? h('th', { class: 'sel' }, headBox) : null, head.map(x => h('th', {}, x)))), tbody))
+      : h('div', { class: 'card muted' }, unsched ? 'Every active asset that matches the filters has a PM schedule.' : 'No PMs here for these filters.'),
+    h('div', { class: 'pager' }, h('span', { class: 'muted' }, `${r.total ? st.offset + 1 : 0}–${Math.min(st.offset + st.limit, r.total)} of ${r.total}`),
+      h('button', { class: 'btn small', disabled: st.offset === 0, onclick: () => { st.offset = Math.max(0, st.offset - st.limit); refreshList(); } }, '‹ Prev'),
+      h('button', { class: 'btn small', disabled: st.offset + st.limit >= r.total, onclick: () => { st.offset += st.limit; refreshList(); } }, 'Next ›')));
+    drawBar();
+  }
+  const count = () => (st.allMatching ? st.total : st.selected.size);
+  function drawBar() {
+    const n = count();
+    bar.style.display = n ? '' : 'none';
+    const pageAll = st.rows.length && st.rows.every(x => st.selected.has(keyOf(x)));
+    const unsched = st.tab === 'unscheduled';
+    bar.replaceChildren(h('strong', {}, `${n} ${unsched ? 'asset' : 'PM'}${n === 1 ? '' : 's'} selected`),
+      !st.allMatching && pageAll && st.total > st.rows.length ? h('a', { href: '#', onclick: ev => { ev.preventDefault(); st.allMatching = true; drawBar(); } }, `Select all ${st.total} matching`) : null,
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn small primary', onclick: () => moveDialog(unsched) }, unsched ? 'Schedule into a month…' : 'Move to month…'),
+      h('button', { class: 'btn small', onclick: () => { clearSel(); refreshList(); } }, 'Clear'));
+  }
+
+  // ---- move / schedule dialog with before/after preview ----
+  async function moveDialog(unsched) {
+    const n = count();
+    const monthSel = h('select', {}, fc.months.map(m => h('option', { value: m.month }, `${monthLabel(m.month, true)} — ${m.count} PMs`)));
+    // Suggest the lightest month.
+    const lightest = fc.months.reduce((a, b) => (b.count < a.count ? b : a), fc.months[0]);
+    monthSel.value = lightest.month;
+    const modes = [['spread', 'Spread evenly across the working days of the month'], ['keep', 'Keep each PM\'s day of the month'], ['date', 'All on one date:']];
+    let mode = 'spread';
+    const dateInp = h('input', { type: 'date', style: 'width:auto', disabled: true });
+    const radios = modes.filter(([v]) => !unsched || v !== 'keep').map(([v, l]) => h('label', { class: 'check', style: 'padding:0' },
+      h('input', { type: 'radio', name: 'pmode', value: v, checked: v === mode, onchange: () => { mode = v; dateInp.disabled = v !== 'date'; } }), l, v === 'date' ? [' ', dateInp] : null));
+    const intervalInp = unsched ? h('input', { type: 'number', min: 1, placeholder: 'from model', style: 'width:8rem' }) : null;
+    const reason = h('textarea', { rows: 2, placeholder: 'Required when PMs move later than their due date plus grace period (a deferral). Recorded in the audit trail.' });
+    const preview = h('div');
+    const body = h('div', { class: 'stack form' },
+      h('p', {}, unsched ? `Create PM schedules for ${n} asset(s), first due in:` : `Move ${n} PM(s) so they fall in:`),
+      monthSel, h('div', { class: 'stack' }, radios),
+      unsched ? h('div', {}, h('label', {}, 'PM interval (months)'), intervalInp, h('div', { class: 'hint' }, 'Leave blank to use each model\'s PM interval.')) : null,
+      !unsched ? h('div', {}, h('label', {}, `Reason${isMgr ? '' : ' (moving PMs past their grace period needs a supervisor)'}`), reason) : null,
+      h('div', { class: 'small muted' }, unsched ? '' : 'Each schedule\'s whole cycle shifts by the same amount, so later PMs move too.'),
+      preview);
+    const payload = extra => {
+      const p = { target_month: monthSel.value, day_mode: mode, date: dateInp.value || undefined, forecast: fq(), ...extra };
+      if (unsched) {
+        Object.assign(p, st.allMatching ? { filter: listQuery() } : { asset_ids: [...st.selected.values()].map(x => x.asset_id) });
+        if (intervalInp.value) p.interval_months = Number(intervalInp.value);
+      } else {
+        Object.assign(p, st.allMatching ? { filter: listQuery() } : { items: [...st.selected.values()].map(x => ({ schedule_id: x.id, from: x.occurrence })) });
+        p.reason = reason.value;
+      }
+      return p;
+    };
+    const url = unsched ? '/api/pm/schedule-assets' : '/api/pm/reschedule';
+    const doPreview = async () => {
+      preview.replaceChildren(h('div', { class: 'muted' }, 'Calculating…'));
+      try {
+        const r = await api('POST', url, payload({ dry_run: true }));
+        const [bt0] = balanceText(fc.balance_cv); const [bt1, bc1] = balanceText(r.after.balance_cv);
+        preview.replaceChildren(h('div', { class: 'card', style: 'margin:0' },
+          h('div', { class: 'toolbar' }, h('strong', {}, 'Before / after'), h('span', { class: 'pill' }, `before: ${bt0} (${fc.balance_cv}%)`), h('span', { class: `pill ${bc1}` }, `after: ${bt1} (${r.after.balance_cv}%)`)),
+          planChart(fc, { measure: st.measure, after: r.after }),
+          h('div', { class: 'small', style: 'margin-top:.4rem' }, unsched ? `${r.created} schedule(s) would be created.` : `${r.moved} PM(s) would move${r.unchanged ? `, ${r.unchanged} already there` : ''}${r.later ? `, ${r.later} past their grace period (deferral)` : ''}.`,
+            r.skipped.length ? h('div', { class: 'banner warn', style: 'margin-top:.4rem' }, `${r.skipped.length} skipped: `, r.skipped.slice(0, 5).map(s => `${s.asset_tag || '#' + s.schedule_id} (${s.reason})`).join('; '), r.skipped.length > 5 ? '…' : '') : null)));
+        return r;
+      } catch (e) { preview.replaceChildren(h('div', { class: 'banner bad' }, e.message)); return null; }
+    };
+    const ok = await modal(unsched ? 'Schedule PMs into a month' : 'Move PMs to a month', body, [
+      { label: 'Cancel', value: null },
+      { label: 'Preview', action: async () => { await doPreview(); return false; } },
+      { label: unsched ? 'Create schedules' : 'Move PMs', cls: 'primary', action: async () => {
+        const r = await api('POST', url, payload({}));
+        toast(unsched ? `${r.created} PM schedule(s) created` : `${r.moved} PM(s) moved to ${monthLabel(monthSel.value, true)}`);
+        if (r.skipped?.length) toast(`${r.skipped.length} skipped`, true);
+        return true;
+      } }], { wide: true, onOpen: () => setTimeout(doPreview, 50) });
+    if (ok) { clearSel(); await refreshChart(); await refreshList(); }
+  }
+
+  async function refreshAll() { st.offset = 0; clearSel(); await refreshChart(); await refreshList(); }
+
+  el.replaceChildren(
+    h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'PM Planner'), h('div', { class: 'muted' }, 'Forecast of scheduled preventive maintenance, month by month. Spread the work evenly and move PMs between months.')),
+      h('div', { class: 'actions' }, horizon, measureSel, h('a', { class: 'btn', href: '#/list/pm_schedules' }, 'PM Schedules'))),
+    filters, stats, h('div', { class: 'card' }, chartHost), tabs, bar, listHost);
+  await refreshChart();
+  await refreshList();
 }
 
 function viewScan(el) {

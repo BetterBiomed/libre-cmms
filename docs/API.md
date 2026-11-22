@@ -46,6 +46,15 @@ Field definitions: `GET /api/meta` or `server/schema.js`.
 | POST | `/api/parts/{id}/stock` | `{ type: Receive/Adjust/Return/Count, quantity, unit_cost?, note? }` |
 | POST | `/api/po/{id}/receive` | |
 
+## PM Planner
+| Method | Path | Body / query |
+|---|---|---|
+| GET | `/api/pm/forecast` | `?months=12&start=YYYY-MM` plus filters `facility_id, department_id, category, model_id, team_id, assigned_to, program` -> `{ months: [{ month, count, hours, completed, life_support, by_category }], average, balance_cv, peak, overdue, schedules }` |
+| GET | `/api/pm/plan` | `?month=YYYY-MM` (PMs due in that month) or `?overdue=1`, plus filters, `q`, `offset`, `limit` |
+| GET | `/api/pm/unscheduled` | active assets with no active PM schedule (filters, `q`) |
+| POST | `/api/pm/reschedule` | `{ items: [{ schedule_id, from }] or filter, target_month, day_mode: spread/keep/date, date?, reason?, dry_run?, forecast? }` -> `{ moved, unchanged, later, skipped, after? }` |
+| POST | `/api/pm/schedule-assets` | `{ asset_ids or filter, target_month, day_mode?, date?, interval_months?, program?, team_id?, assigned_to?, dry_run? }` |
+
 ## Device Lookup
 | Method | Path | Body / query |
 |---|---|---|

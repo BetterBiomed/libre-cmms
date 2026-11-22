@@ -34,6 +34,22 @@ Copyright © 2026 CreativeMed LLC — AGPL-3.0-or-later
 7. **Complete & Sign** the work order: describe the work and confirm return to service.
 8. A supervisor reviews it and selects **Supervisor Sign-off**, which closes and locks the work order.
 
+## PM Planner (load balancing)
+
+**Maintenance -> PM Planner** (or the **PM Planner** button on PM Schedules) forecasts your preventive maintenance workload month by month, so you can spread it evenly.
+
+* **Chart:** one bar per month, side by side, for the next 12, 18 or 24 months. It counts every due date of every active PM schedule, not just the next one. Switch between **PM work orders** and **Labor hours** (estimated from each model's actual PM labor history). The dashed line is the even-distribution average. Bars more than 15% above it are red, within 15% green, and more than 15% below it blue. The current month includes PMs already completed this month. Overdue PMs are shown separately.
+* **Balance score:** the variation between months (0% = perfectly even). Under 15% is *Even*, under 30% *Somewhat uneven*, otherwise *Uneven*.
+* **Filters:** facility, owning department, device type, team, technician and program. For example, balance one team's or one department's workload.
+* **Click a month** to list the PMs due in it. Other tabs list all PM schedules, overdue PMs, and **assets without a PM schedule**.
+* **Mass select** PMs (or *Select all N matching*) and choose **Move to month...**:
+  * pick the target month (the lightest month is suggested; each option shows its current count),
+  * choose how to place them: spread evenly across the month's working days, keep each PM's day of the month, or one specific date,
+  * a **before / after** chart and balance score preview the result before you confirm.
+* Moving a PM shifts its schedule's whole cycle, so later PMs follow. For 3- or 6-month schedules, Libre shifts the cycle's phase so a PM lands in the chosen month without putting the next PM in the past. An open PM work order already generated for the old date moves with it.
+* **Deferrals:** moving a PM later than its due date plus grace period requires a **supervisor** and a **reason**. Both are recorded on the schedule and in the audit trail. Moving PMs earlier is always allowed.
+* **Assets without a PM schedule:** select them and choose **Schedule into a month...** to create PM schedules first due in that month, using each model's PM interval (or one you enter) and its approved procedure.
+
 ## Device Lookup
 
 Use Device Lookup to fill in equipment details from a model number instead of typing them.

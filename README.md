@@ -40,7 +40,7 @@ On Windows you can double-click `start-libre.cmd`. To install as a service, see 
 * Inventory Mode: department scanning with red/yellow flags (recalls, open repairs, previous Unable To Locate, end-of-life, PMs due), current-location updates, and Unable To Locate tracking and reports
 * Asset management: models, locations, parent/child components, warranty, lifecycle, network/cybersecurity data, QR code and/or barcode labels, CSV import with duplicate detection
 * Work orders: 11 types, labor and parts costing, failure/cause/action codes, warranty/contract coverage check, technician and supervisor e-signatures, SLA escalation, filter-and-bulk-assign to technicians or team queues
-* Preventive maintenance: schedules, AEM programs, automatic WO generation, deferral approvals, compliance tracking
+* Preventive maintenance: schedules, AEM programs, automatic WO generation, deferral approvals, compliance tracking, and a **PM Planner** to forecast and load-balance PM work month by month
 * Guided procedures: measurement limits and tolerances, conditional troubleshooting steps, version control and approval, automatic corrective WO on failure
 * Test equipment calibration checks, recalls with serial-number matching, incidents
 * Parts inventory, purchase orders, vendors, contracts

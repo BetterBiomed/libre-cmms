@@ -59,14 +59,15 @@ The public service-request portal needs no login: **http://localhost:8090/portal
 
 1. **Dashboard** (sign in as `jreyes`): PM completion trend, open and overdue work, MTTR, equipment out of service, recalls, Unable To Locate, contracts and certifications expiring. Every tile drills down.
 2. **Work Orders**: filter by facility, department, device type or priority. Tick several work orders and use **Assign team** or **Assign technician**; the dialog shows each technician's workload.
-3. **A PM with a guided test**: open an open Preventive work order (sign in as `mtorres` and use *My open work*), select **Start Test / Checklist**, pick the test equipment (calibration is checked), enter measurements and watch pass/fail evaluate live. Failing a step reveals the troubleshooting step and, when signed, creates a corrective work order automatically.
-4. **Asset record**: open any infusion pump to show the history, PM schedule, test records, open recall, coverage banner, and owning department versus current location. Print a QR label.
-5. **Device Lookup**: type `LIFEPAK 12` or `8015`. Libre pulls manufacturer, FDA class, device type and a suggested PM interval from the FDA databases (needs internet).
-6. **Inventory Mode**: open the in-progress Lakeside ED inventory, scan a few tags (type them, for example `LCH-00040`), and show red/yellow flags and the recall alert. Complete it to show current-location updates and Unable To Locate.
-7. **Recalls**: the MV-300 door latch recall shows affected assets, generated work orders and completion progress.
-8. **Reports**: PM Compliance by Department, Reliability (MTBF/MTTR), Replacement Priority, Cost by Department, Unable To Locate Metrics, Cybersecurity inventory. Each exports to CSV/Excel and prints to PDF.
-9. **Service portal**: open `/portal` on a phone, submit a request, then show it arriving under Help Desk and converting to a work order.
-10. **Audit trail** and **e-signatures**: every change, signature and login is recorded.
+3. **PM Planner** (Maintenance -> PM Planner): the 12-month workload chart shows one month running hot. Click it, select some PMs, choose **Move to month...**, and show the before/after preview evening out the workload.
+4. **A PM with a guided test**: open an open Preventive work order (sign in as `mtorres` and use *My open work*), select **Start Test / Checklist**, pick the test equipment (calibration is checked), enter measurements and watch pass/fail evaluate live. Failing a step reveals the troubleshooting step and, when signed, creates a corrective work order automatically.
+5. **Asset record**: open any infusion pump to show the history, PM schedule, test records, open recall, coverage banner, and owning department versus current location. Print a QR label.
+6. **Device Lookup**: type `LIFEPAK 12` or `8015`. Libre pulls manufacturer, FDA class, device type and a suggested PM interval from the FDA databases (needs internet).
+7. **Inventory Mode**: open the in-progress Lakeside ED inventory, scan a few tags (type them, for example `LCH-00040`), and show red/yellow flags and the recall alert. Complete it to show current-location updates and Unable To Locate.
+8. **Recalls**: the MV-300 door latch recall shows affected assets, generated work orders and completion progress.
+9. **Reports**: PM Compliance by Department, Reliability (MTBF/MTTR), Replacement Priority, Cost by Department, Unable To Locate Metrics, Cybersecurity inventory. Each exports to CSV/Excel and prints to PDF.
+10. **Service portal**: open `/portal` on a phone, submit a request, then show it arriving under Help Desk and converting to a work order.
+11. **Audit trail** and **e-signatures**: every change, signature and login is recorded.
 
 ## Notes
 
