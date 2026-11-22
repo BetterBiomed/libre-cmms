@@ -17,6 +17,9 @@ const reports = require('./lib/reports');
 const inventory = require('./lib/inventory');
 const deviceLookup = require('./lib/device-lookup');
 const pmPlanner = require('./lib/pm-planner');
+const emailReports = require('./lib/email-reports');
+const mailer = require('./lib/mailer');
+const passwordReset = require('./lib/password-reset');
 const { HttpError } = crud;
 
 const VERSION = require('../package.json').version;
@@ -210,6 +213,7 @@ route('GET', '/api/health', () => ({ ok: true, version: VERSION }), { public: tr
 route('GET', '/api/setup/status', () => ({
   needsSetup: db.prepare('SELECT COUNT(*) n FROM users').get().n === 0,
   org_name: dbm.getSetting(db, 'org_name', 'Libre CMMS'), version: VERSION,
+  password_reset: passwordReset.available(db),
 }), { public: true });
 route('POST', '/api/setup', async (ctx) => {
   if (db.prepare('SELECT COUNT(*) n FROM users').get().n) throw new HttpError(409, 'Setup already completed');
@@ -217,6 +221,7 @@ route('POST', '/api/setup', async (ctx) => {
   const problem = auth.passwordProblem(b.password);
   if (problem) throw new HttpError(400, problem);
   if (!b.username || !b.full_name) throw new HttpError(400, 'Username and full name are required');
+  if (!mailer.validEmail(b.email)) throw new HttpError(400, 'A valid email address is required for the administrator.');
   const hash = auth.hashPassword(b.password);
   dbm.tx(db, () => {
     if (b.org_name) dbm.setSetting(db, 'org_name', String(b.org_name).slice(0, 120));
@@ -246,6 +251,20 @@ route('POST', '/api/auth/login', async (ctx) => {
   crud.audit({ db, user: { id: u.id, username: u.username }, ip: ctx.ip }, 'login', 'users', u.id, 'Signed in');
   ctx.setCookie = cookie('libre_session', token, config.sessionHours * 3600);
   return { ok: true, must_change_password: !!u.must_change_password };
+}, { public: true });
+
+// Forgot password (no login). Same answer whether or not the account exists.
+route('POST', '/api/auth/forgot', async (ctx) => {
+  rateLimit('forgot:' + ctx.ip, 5, 15 * 60e3);
+  return passwordReset.request(ctx, await jsonBody(ctx.req));
+}, { public: true });
+route('POST', '/api/auth/reset/check', async (ctx) => {
+  rateLimit('reset:' + ctx.ip, 30, 15 * 60e3);
+  return passwordReset.check(ctx, await jsonBody(ctx.req));
+}, { public: true });
+route('POST', '/api/auth/reset', async (ctx) => {
+  rateLimit('reset:' + ctx.ip, 30, 15 * 60e3);
+  return passwordReset.reset(ctx, await jsonBody(ctx.req));
 }, { public: true });
 
 route('GET', '/api/public/info', () => ({
@@ -343,19 +362,38 @@ route('GET', '/api/e/:entity/:id', (ctx, p) => {
 });
 route('POST', '/api/e/:entity', async (ctx, p) => {
   const b = await jsonBody(ctx.req);
-  return { row: crud.create(ctx, p.entity, b) };
+  return { row: dbm.tx(db, () => crud.create(ctx, p.entity, b)) };
 });
 route('PUT', '/api/e/:entity/:id', async (ctx, p) => {
   const b = await jsonBody(ctx.req);
-  return { row: crud.update(ctx, p.entity, Number(p.id), b) };
+  return { row: dbm.tx(db, () => crud.update(ctx, p.entity, Number(p.id), b)) };
 });
-route('DELETE', '/api/e/:entity/:id', (ctx, p) => { crud.remove(ctx, p.entity, Number(p.id)); return { ok: true }; });
+route('DELETE', '/api/e/:entity/:id', (ctx, p) => { dbm.tx(db, () => crud.remove(ctx, p.entity, Number(p.id))); return { ok: true }; });
 route('POST', '/api/import/:entity', async (ctx, p) => {
   const buf = await readBody(ctx.req, 20 * 1024 * 1024);
   return dbm.tx(db, () => importCsv(ctx, p.entity, buf.toString('utf8')));
 });
 
 // Workflows
+// Email: Unable To Locate reports to department managers, PM progress reports
+const pdfResult = (r) => ({ __raw: r.buf, type: 'application/pdf', filename: r.name });
+route('GET', '/api/utl/open', (ctx) => emailReports.utlList(ctx, ctx.query));
+route('GET', '/api/utl/report.pdf', (ctx) => pdfResult(emailReports.utlPdfDownload(ctx, ctx.query)));
+route('POST', '/api/utl/email/preview', async (ctx) => emailReports.utlPreview(ctx, await jsonBody(ctx.req)));
+route('POST', '/api/utl/email', async (ctx) => emailReports.utlSend(ctx, await jsonBody(ctx.req)));
+route('GET', '/api/pm/progress', (ctx) => { const r = emailReports.pmPdfDownload(ctx, ctx.query); return r.data; });
+route('GET', '/api/pm/progress.pdf', (ctx) => pdfResult(emailReports.pmPdfDownload(ctx, ctx.query)));
+route('POST', '/api/pm/progress/email', async (ctx) => emailReports.pmSend(ctx, await jsonBody(ctx.req)));
+route('POST', '/api/email/test', async (ctx) => {
+  need(ctx.user.role === 'admin');
+  const b = await jsonBody(ctx.req);
+  const to = b.to || crud.getRaw(db, 'users', ctx.user.id)?.email;
+  try {
+    await mailer.send(db, { to, subject: `Libre CMMS test email from ${dbm.getSetting(db, 'org_name', 'Libre CMMS')}`, text: 'Email from Libre CMMS is working.',
+      html: '<p>Email from <strong>Libre CMMS</strong> is working.</p>' }, { kind: 'Test', sent_by: ctx.user.username });
+  } catch (e) { throw new HttpError(502, e.message); }
+  return { ok: true, to };
+});
 // PM Planner (load balancing)
 const notRequester = ctx => need(ctx.user.role !== 'requester');
 route('GET', '/api/pm/forecast', (ctx) => { notRequester(ctx); return pmPlanner.forecast(ctx, ctx.query); });
@@ -417,6 +455,8 @@ route('POST', '/api/recalls/:id/match', (ctx, p) => { need(['admin', 'supervisor
 route('POST', '/api/recalls/:id/workorders', (ctx, p) => { need(['admin', 'supervisor', 'technician'].includes(ctx.user.role)); return { created: logic.recallWorkOrders(ctx, Number(p.id)) }; });
 route('POST', '/api/requests/:id/convert', async (ctx, p) => ({ row: logic.convertRequest(ctx, Number(p.id), await jsonBody(ctx.req)) }));
 route('POST', '/api/parts/:id/stock', async (ctx, p) => ({ row: logic.adjustStock(ctx, Number(p.id), await jsonBody(ctx.req)) }));
+route('POST', '/api/po/:id/approve', async (ctx, p) => ({ row: logic.approvePo(ctx, Number(p.id), await jsonBody(ctx.req)) }));
+route('GET', '/api/po/:id/approval', (ctx, p) => { const po = crud.getRaw(db, 'purchase_orders', Number(p.id)); if (!po) throw new HttpError(404, 'PO not found'); return logic.poApproval(db, po); });
 route('POST', '/api/po/:id/receive', (ctx, p) => ({ row: logic.receivePo(ctx, Number(p.id)) }));
 
 // Reports
@@ -503,18 +543,26 @@ route('POST', '/api/notifications/read', (ctx) => {
 });
 
 // Administration
-const SETTING_KEYS = ['org_name', 'portal_enabled', 'portal_message', 'sla_emergency_hours', 'sla_urgent_hours', 'sla_high_hours', 'public_url', 'label_code', 'label_qr_content', 'label_size', 'device_lookup_online'];
+const SETTING_KEYS = ['org_name', 'portal_enabled', 'portal_message', 'sla_emergency_hours', 'sla_urgent_hours', 'sla_high_hours', 'public_url', 'label_code', 'label_qr_content', 'label_size', 'device_lookup_online',
+  'smtp_host', 'smtp_port', 'smtp_security', 'smtp_user', 'smtp_from', 'smtp_from_name', 'smtp_reply_to', 'smtp_allow_self_signed',
+  'email_utl_subject', 'email_utl_body', 'email_pm_subject', 'email_pm_body', 'pm_progress_auto', 'pm_progress_day', 'password_reset_enabled', 'po_approval_limit'];
 route('GET', '/api/settings', (ctx) => {
   need(ctx.user.role === 'admin');
-  const s = {}; for (const k of SETTING_KEYS) s[k] = dbm.getSetting(db, k, '');
-  return { settings: s, lookups: db.prepare('SELECT * FROM lookups ORDER BY list, sort, value').all(),
+  const s = {}; for (const k of SETTING_KEYS) s[k] = dbm.getSetting(db, k, '') || emailReports.DEFAULT_TEMPLATES[k] || '';
+  s.smtp_pass_set = !!dbm.getSetting(db, 'smtp_pass', ''); // the password itself is never sent to the browser
+  if (!s.password_reset_enabled) s.password_reset_enabled = '1';
+  s.password_reset_status = passwordReset.unavailableReason(db) || 'available';
+  return { settings: s, defaults: emailReports.DEFAULT_TEMPLATES, lookups: db.prepare('SELECT * FROM lookups ORDER BY list, sort, value').all(),
     server: { version: VERSION, node: process.version, dataDir: config.dataDir, port: config.port, https: config.https.enabled, backupDir: config.backup.dir } };
 });
 route('PUT', '/api/settings', async (ctx) => {
   need(ctx.user.role === 'admin');
   const b = await jsonBody(ctx.req);
-  for (const k of SETTING_KEYS) if (k in b) dbm.setSetting(db, k, String(b[k] ?? '').slice(0, 2000));
-  crud.audit(ctx, 'settings', null, null, 'Settings updated', b);
+  for (const k of SETTING_KEYS) if (k in b) dbm.setSetting(db, k, String(b[k] ?? '').slice(0, 5000));
+  if (typeof b.smtp_pass === 'string' && b.smtp_pass !== '') dbm.setSetting(db, 'smtp_pass', b.smtp_pass);
+  if (b.smtp_pass_clear) dbm.setSetting(db, 'smtp_pass', '');
+  const logged = { ...b }; if ('smtp_pass' in logged) logged.smtp_pass = '(changed)';
+  crud.audit(ctx, 'settings', null, null, 'Settings updated', logged);
   return { ok: true };
 });
 route('PUT', '/api/lookups/:list', async (ctx, p) => {
@@ -620,7 +668,9 @@ function jobs() {
     const created = logic.generatePMs(ctx);
     if (created.length) console.log(`[pm] generated ${created.length} PM work orders`);
     logic.runAlerts(ctx);
+    emailReports.autoMonthly(db).then(r => { if (r) console.log(`[email] monthly PM progress: ${r.sent} sent, ${r.failed} failed`); }).catch(e => console.error('[email]', e.message));
     db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
+    passwordReset.cleanup(db);
     if (config.backup.enabled && new Date().getHours() >= config.backup.hour) {
       const last = dbm.getSetting(db, 'last_auto_backup', '');
       const day = new Date().toISOString().slice(0, 10);

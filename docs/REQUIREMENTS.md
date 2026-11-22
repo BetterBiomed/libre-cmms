@@ -49,7 +49,7 @@ Notes:
 | Firewall | Allow inbound traffic on that port from the networks your users are on. The installer can add a Windows Firewall rule. |
 | Address | Static IP or DNS name (for example `cmms.hospital.local`). |
 | Bandwidth | Minimal: about 50–300 KB per page view, plus attachment sizes. Works over Wi-Fi and cellular. |
-| Outbound | None required. For the optional Device Lookup, allow HTTPS (TCP 443) from the server to `api.fda.gov`. Only the model / manufacturer text typed into the lookup is sent; results are cached for 30 days. Turn it off under Settings (`device_lookup_online`). |
+| Outbound | None required. For the optional Device Lookup, allow HTTPS (TCP 443) from the server to `api.fda.gov`. Only the model / manufacturer text typed into the lookup is sent; results are cached for 30 days. Turn it off under Settings (`device_lookup_online`). For email (Unable To Locate and PM progress reports), allow SMTP from the server to your mail server or relay: usually TCP 587 (STARTTLS), 465 (SSL/TLS) or 25 (internal relay). |
 
 ## 4. HTTPS (strongly recommended)
 

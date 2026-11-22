@@ -273,13 +273,17 @@ function main() {
   for (const [k, v] of Object.entries({ org_name: 'Libre Demo Health System', portal_enabled: '1', portal_message: 'DEMO SYSTEM - fictional data. For emergencies call Clinical Engineering at x4500.',
     sla_emergency_hours: '1', sla_urgent_hours: '4', sla_high_hours: '24', label_code: 'qr', label_qr_content: 'url', label_size: 'standard', device_lookup_online: '1', demo_built_at: stamp, demo_seed: String(SEED) })) dbm.setSetting(db, k, v);
 
+  const DEPT_MANAGERS = ['Dana Whitfield', 'Marcus Okafor', 'Priya Raman', 'Helen Brooks', 'Tomas Alvarez', 'Grace Kim', 'Samuel Ortiz', 'Nora Lindqvist', 'Victor Hale', 'Aisha Mensah', 'Paul Duquesne', 'Leah Abrams', 'Owen Fitzgerald'];
   // ---------------- facilities & departments ----------------
   const facilities = []; const departments = [];
   for (const F of FACILITIES) {
     const fid = ins('facilities', { name: F.name, code: F.code, address: F.address, phone: F.phone });
     facilities.push({ ...F, id: fid });
     for (const [name, kind, cc, building, floor] of F.depts) {
-      const did = ins('departments', { name, facility_id: fid, cost_center: cc, building, floor, contact: `${name} manager`, phone: `x${ri(2000, 7999)}` });
+      const mgr = DEPT_MANAGERS[departments.length % DEPT_MANAGERS.length];
+      // Every 7th department has no manager email on file, to show the 'type an address' flow.
+      const did = ins('departments', { name, facility_id: fid, cost_center: cc, building, floor, contact: `${name} manager`, phone: `x${ri(2000, 7999)}`,
+        manager_name: mgr, manager_email: departments.length % 7 === 6 ? null : `${mgr.toLowerCase().replace(/[^a-z]+/g, '.')}@demo.libre.invalid` });
       departments.push({ id: did, name, kind, facility: facilities[facilities.length - 1], building, floor });
     }
   }
@@ -666,6 +670,8 @@ function main() {
     ins('part_transactions', { part_id: p.id, txn_type: 'Receive', quantity: received, unit_cost: p.cost, note: 'Opening stock (demo)', user_name: 'demo', created_at: at(addDays(TODAY, -380), 10) });
     db.prepare('UPDATE parts SET quantity_on_hand = ? WHERE id = ?').run(onHand, p.id);
   }
+  const PO_APPROVAL_LIMIT = 1000; // demo: POs of $1,000 or more need a supervisor's signature
+  dbm.setSetting(db, 'po_approval_limit', String(PO_APPROVAL_LIMIT));
   const poDefs = [['Tri-County Biomedical Supply', 'Ordered', [['BAT-MV300', 12], ['CLMP-01', 6]]], ['Apex Medical Parts', 'Received', [['SPO2-SNS', 8], ['ECG-5LD', 6], ['NIBP-HOSE', 10]]],
     ['Tri-County Biomedical Supply', 'Draft', [['O2-CELL', 6], ['FLT-AV900', 10]]], ['Apex Medical Parts', 'Partially Received', [['CSTR-01', 20], ['HSET-HB900', 4]]]];
   for (const [vendor, status, lines] of poDefs) {
@@ -677,6 +683,11 @@ function main() {
       total += q * parts[pn].cost;
     }
     db.prepare('UPDATE purchase_orders SET total = ? WHERE id = ?').run(round2(total), po);
+    // POs at or above the approval limit that were ordered carry a supervisor's approval signature.
+    if (status !== 'Draft' && total >= PO_APPROVAL_LIMIT) {
+      db.prepare('UPDATE purchase_orders SET approval_signature = ?, approved_at = ?, approved_total = ? WHERE id = ?')
+        .run(`Jordan Reyes - Approved purchase of $${round2(total).toFixed(2)}`, at(addDays(od, -1), 9), round2(total), po);
+    }
   }
 
   // ---------------- documents ----------------
@@ -797,6 +808,8 @@ function main() {
     db.prepare('UPDATE assets SET utl_since = COALESCE(utl_since, ?) WHERE id = ?').run(d, w.asset_id);
   }
   // An inventory in progress right now (Lakeside ED), using the real scanning engine.
+  // Portal requests require an email address.
+  db.prepare("UPDATE service_requests SET requester_email = lower(replace(replace(replace(requester_name, ' RN', ''), '. ', '.'), ' ', '.')) || '@demo.libre.invalid' WHERE requester_email IS NULL").run();
   const lchEd = departments.find(d => d.facility.code === 'LCH' && d.kind === 'ED');
   const tctx = { db, user: { id: users.tbrooks.id, username: 'tbrooks', full_name: users.tbrooks.full, role: 'technician' }, ip: 'demo' };
   const st = inventory.start(tctx, { facility_id: lchEd.facility.id, department_id: lchEd.id });

@@ -284,3 +284,8 @@ tr.selected td { background: #eef8fb; }
   .content { padding: .75rem; }
   .dropdown { width: 92vw; right: -3rem; }
 }
+/* Unable To Locate department chips */
+.dept-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.dept-chips .chip { display: flex; gap: .45rem; align-items: flex-start; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.dept-chips .chip.on { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(11, 110, 127, .18); }
+.dept-chips .chip .click { cursor: pointer; }

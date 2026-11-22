@@ -27,7 +27,7 @@
         <div><label>Urgency</label><select name="urgency"><option>Normal</option><option>Low</option><option>High</option><option>Patient Care Impacted</option></select></div>
         <div class="grid g2"><div><label class="req">Your name</label><input type="text" name="requester_name" required></div>
           <div><label>Phone / extension</label><input type="text" name="requester_phone"></div></div>
-        <div><label>Email (optional)</label><input type="email" name="requester_email"></div>
+        <div><label class="req">Email</label><input type="email" name="requester_email" required autocomplete="email"><div class="hint">Required so Clinical Engineering can update you on your request.</div></div>
         <div class="grid g2"><div><label>Department</label><select name="department_id" id="dept"><option value=""></option>${depts}</select></div>
           <div><label>Room / location</label><input type="text" name="room" id="room"></div></div>
         <div class="banner bad" id="err" style="display:none"></div>

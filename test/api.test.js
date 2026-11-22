@@ -35,10 +35,10 @@ test('Libre end-to-end', async (t) => {
 
   await t.test('setup + login', async () => {
     assert.equal((await api('GET', '/api/setup/status')).data.needsSetup, true);
-    assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin User', password: 'short' })).status, 400);
-    const s = await api('POST', '/api/setup', { org_name: 'Test Hospital', username: 'admin', full_name: 'Admin User', password: 'Password123', sample_data: true });
+    assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin User', password: 'short' , email: 'admin@example.org' })).status, 400);
+    const s = await api('POST', '/api/setup', { org_name: 'Test Hospital', username: 'admin', full_name: 'Admin User', password: 'Password123', sample_data: true , email: 'admin@example.org' });
     assert.equal(s.status, 200, JSON.stringify(s.data));
-    assert.equal((await api('POST', '/api/setup', { username: 'x', full_name: 'x', password: 'Password123' })).status, 409);
+    assert.equal((await api('POST', '/api/setup', { username: 'x', full_name: 'x', password: 'Password123' , email: 'admin@example.org' })).status, 409);
     assert.equal((await api('GET', '/api/meta')).status, 401);
     assert.equal((await api('POST', '/api/auth/login', { username: 'admin', password: 'wrong' })).status, 401);
     assert.equal((await api('POST', '/api/auth/login', { username: 'ADMIN', password: 'Password123' })).status, 200);
@@ -192,7 +192,7 @@ test('Libre end-to-end', async (t) => {
 
   await t.test('public portal', async () => {
     const saved = cookie; cookie = '';
-    const s = await api('POST', '/api/public/requests', { requester_name: 'Nurse', problem: 'Pump beeping', asset_text: 'RGH-00002', urgency: 'High' });
+    const s = await api('POST', '/api/public/requests', { requester_name: 'Nurse', requester_email: 'nurse@example.org', problem: 'Pump beeping', asset_text: 'RGH-00002', urgency: 'High' });
     assert.equal(s.status, 200, JSON.stringify(s.data));
     assert.equal(s.data.asset_found, true);
     const st = await api('GET', `/api/public/requests/${s.data.request_number}?token=${s.data.token}`);

@@ -53,7 +53,7 @@ The public service-request portal needs no login: **http://localhost:8090/portal
 | **Testing** | 6 approved procedures (infusion, defibrillator, monitor, ventilator, ESU, general electrical safety), 1 draft revision awaiting approval, and about 450 guided test records with measurements. A few failed a step and generated follow-up repairs automatically. |
 | **Repairs** | About 700 corrective work orders over 12 months with failure/cause/action codes, labor, parts, downtime and vendor service. Current open repairs at every priority. |
 | **People** | 13 users, 6 teams, technician certifications (some expiring soon) |
-| **Other** | Vendors and service contracts, parts with stock levels and reorder alerts, purchase orders, 3 recalls (open, in progress, completed), incidents, service requests with satisfaction ratings, 7 department inventories (1 in progress), Unable To Locate items, manuals, knowledge articles and end-of-life notices |
+| **Other** | Vendors and service contracts, parts with stock levels and reorder alerts, purchase orders, 3 recalls (open, in progress, completed), incidents, service requests with satisfaction ratings, 7 department inventories (1 in progress), Unable To Locate items, department managers with email addresses (a few departments deliberately have none), manuals, knowledge articles and end-of-life notices |
 
 ## Suggested 15-minute demo
 
@@ -64,14 +64,16 @@ The public service-request portal needs no login: **http://localhost:8090/portal
 5. **Asset record**: open any infusion pump to show the history, PM schedule, test records, open recall, coverage banner, and owning department versus current location. Print a QR label.
 6. **Device Lookup**: type `LIFEPAK 12` or `8015`. Libre pulls manufacturer, FDA class, device type and a suggested PM interval from the FDA databases (needs internet).
 7. **Inventory Mode**: open the in-progress Lakeside ED inventory, scan a few tags (type them, for example `LCH-00040`), and show red/yellow flags and the recall alert. Complete it to show current-location updates and Unable To Locate.
-8. **Recalls**: the MV-300 door latch recall shows affected assets, generated work orders and completion progress.
-9. **Reports**: PM Compliance by Department, Reliability (MTBF/MTTR), Replacement Priority, Cost by Department, Unable To Locate Metrics, Cybersecurity inventory. Each exports to CSV/Excel and prints to PDF.
-10. **Service portal**: open `/portal` on a phone, submit a request, then show it arriving under Help Desk and converting to a work order.
-11. **Audit trail** and **e-signatures**: every change, signature and login is recorded.
+8. **Unable To Locate** (Equipment -> Unable To Locate): tick two department chips and choose **Email department managers...** to show the per-department emails with the PDF report attached, and **Download PDF**. In the PM Planner, **Email PM progress...** previews a technician's or team's monthly numbers. Sending needs a mail server set up under Settings -> Email (the demo addresses end in `.invalid` and are fictional).
+9. **Recalls**: the MV-300 door latch recall shows affected assets, generated work orders and completion progress.
+10. **Reports**: PM Compliance by Department, Reliability (MTBF/MTTR), Replacement Priority, Cost by Department, Unable To Locate Metrics, Cybersecurity inventory. Each exports to CSV/Excel and prints to PDF.
+11. **Service portal**: open `/portal` on a phone, submit a request, then show it arriving under Help Desk and converting to a work order.
+12. **Audit trail** and **e-signatures**: every change, signature and login is recorded.
 
 ## Notes
 
 * The demo runs on port **8090**, so it can run alongside a real Libre server (8080).
 * While the demo server runs, Libre's scheduler works as normal: it generates new PM work orders as they come due and sends notifications.
 * Automatic backups are turned off for the demo.
+* The demo's PO approval limit is $1,000 (Settings). Ordered POs above it already carry Jordan Reyes's approval signature; create a new PO over $1,000 to show the **Approve PO** step.
 * To build the demo from the Libre source code: `node scripts/build-demo.js DEMO`.

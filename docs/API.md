@@ -44,6 +44,8 @@ Field definitions: `GET /api/meta` or `server/schema.js`.
 | POST | `/api/recalls/{id}/match` · `workorders` | |
 | POST | `/api/requests/{id}/convert` | `{ asset_id?, assigned_to? }` |
 | POST | `/api/parts/{id}/stock` | `{ type: Receive/Adjust/Return/Count, quantity, unit_cost?, note? }` |
+| GET | `/api/po/{id}/approval` | → `{ limit, total, required, approved, voided, approved_total }` |
+| POST | `/api/po/{id}/approve` | `{ password }` (supervisor or admin; electronic signature). Needed before ordering when the total is at or above the `po_approval_limit` setting. |
 | POST | `/api/po/{id}/receive` | |
 
 ## PM Planner
@@ -76,6 +78,20 @@ Field definitions: `GET /api/meta` or `server/schema.js`.
 | GET | `/api/assets/{id}/flags` | current red/yellow flags |
 | POST | `/api/assets/{id}/utl` · `located` | `{ notes }` |
 | POST | `/api/wo/{id}/utl` · `located` | `{ notes }` |
+| GET | `/api/utl/open` | `?facility_id&department_id&q` → open UTL rows with department manager |
+| GET | `/api/utl/report.pdf` | `?utl_ids=1,2,3` (or facility_id / department_id) → PDF report |
+| POST | `/api/utl/email/preview` | `{ utl_ids }` → one draft email per department `{ groups: [{ department, to, subject, body, utl_ids, manager }] }` |
+| POST | `/api/utl/email` | `{ groups: [{ utl_ids, to, cc?, subject, body, save_as_manager? }], attach_csv?, cc_me? }` → `{ sent, failed, results }` |
+
+## Email & PM progress
+| Method | Path | Body |
+|---|---|---|
+| GET | `/api/pm/progress` | `?month=YYYY-MM&user_id=` or `team_id=` → `{ due, completed, remaining, overdue, pct, open }` |
+| GET | `/api/pm/progress.pdf` | same query → PDF |
+| POST | `/api/pm/progress/email` | `{ month, technician_ids: [], team_ids: [], cc_me? }` (supervisor) |
+| POST | `/api/email/test` | `{ to }` (admin) |
+
+SMTP settings (`smtp_host`, `smtp_port`, `smtp_security`, `smtp_user`, `smtp_pass`, `smtp_from`, `smtp_from_name`, `smtp_reply_to`) and templates (`email_utl_subject/body`, `email_pm_subject/body`) are set with `PUT /api/settings`. The password is write-only. Sent mail is listed at `GET /api/e/email_log` (supervisors).
 
 ## Other
 `GET /api/dashboard`, `GET /api/reports/{name}?format=csv`, `GET /api/search?q=`, `GET /api/lookup/asset?code=`,
@@ -83,5 +99,7 @@ Field definitions: `GET /api/meta` or `server/schema.js`.
 `GET /api/audit`, `GET /api/notifications`, admin-only: `GET/PUT /api/settings`, `PUT /api/lookups/{list}`, `GET/POST /api/backups`.
 
 ## Public (no login)
-`GET /api/public/info`, `GET /api/public/asset/{tag}`, `POST /api/public/requests`,
+`GET /api/public/info`, `GET /api/public/asset/{tag}`, `POST /api/public/requests` (`requester_name`, `requester_email` and `problem` are required),
 `GET /api/public/requests/{number}?token=`, `POST /api/public/requests/{number}/feedback?token=`.
+
+Forgot password (no login): `POST /api/auth/forgot` `{ identifier }` (user name or email; always answers with the same message, 5 requests per IP per 15 minutes) · `POST /api/auth/reset/check` `{ token }` → `{ username, full_name, expires_at }` · `POST /api/auth/reset` `{ token, password }`. `GET /api/setup/status` reports `password_reset: true|false` (email set up, Public URL set and the `password_reset_enabled` setting on).

@@ -20,7 +20,7 @@ function load(db, admin) {
       dept[n] = c('departments', { name: n, facility_id: fac.id, cost_center: cc }).id;
     }
     const tech1 = c('users', { username: 'mtorres', full_name: 'Morgan Torres', role: 'technician', labor_rate: 48, email: 'mtorres@example.org', skills: 'Infusion, defibrillators, monitoring' });
-    const tech2 = c('users', { username: 'achen', full_name: 'Alex Chen', role: 'technician', labor_rate: 52, skills: 'Imaging support, ventilators' });
+    const tech2 = c('users', { username: 'achen', full_name: 'Alex Chen', role: 'technician', labor_rate: 52, email: 'achen@example.org', skills: 'Imaging support, ventilators' });
     const teamInf = c('teams', { name: 'Infusion & Monitoring', lead_id: tech1.id, facility_id: fac.id, specialty: 'Infusion pumps, patient monitors, defibrillators', active: 1 });
     const teamCC = c('teams', { name: 'Critical Care Equipment', lead_id: tech2.id, facility_id: fac.id, specialty: 'Ventilators, anesthesia', active: 1 });
     c('team_members', { team_id: teamInf.id, user_id: tech1.id });
@@ -102,7 +102,7 @@ function load(db, admin) {
     // Work orders
     const wo = c('work_orders', { type: 'Corrective', asset_id: pumps[1].id, priority: 'High', problem: 'Battery will not hold charge; unit alarms within 2 minutes when unplugged.', requested_by: 'ICU Charge Nurse', assigned_to: tech1.id, due_date: d(2) });
     c('work_orders', { type: 'Corrective', asset_id: defibs[0].id, priority: 'Urgent', problem: 'Printer jams during daily check.', requested_by: 'ED', due_date: d(1) });
-    c('service_requests', { problem: 'Monitor in bed 5 shows intermittent SpO2 dropouts', requester_name: 'J. Rivera RN', department_id: dept.ICU, room: 'Bed 5', asset_id: mons[1].id, urgency: 'High' });
+    c('service_requests', { problem: 'Monitor in bed 5 shows intermittent SpO2 dropouts', requester_name: 'J. Rivera RN', requester_email: 'jrivera@example.org', department_id: dept.ICU, room: 'Bed 5', asset_id: mons[1].id, urgency: 'High' });
     c('recalls', { recall_number: 'Z-0420-2026', title: 'MV-300 door latch may fail to detect open door', source: 'FDA Recall', classification: 'Class II', issued_date: d(-10),
       manufacturer: 'Medivance', model_id: m.pump, action_required: 'Install latch sensor kit LK-7 per field notice FN-118.', due_date: d(45) });
     c('documents', { title: 'Vitalis VX-12 end-of-support notice', doc_type: 'End of Life / End of Support Letter', model_id: m.monitor, revision: '2026-01' });

@@ -75,7 +75,7 @@ test('Device Lookup', async (t) => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   t.after(() => { server.close(); db.close(); globalThis.fetch = realFetch; fs.rmSync(dir, { recursive: true, force: true }); });
-  assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin', password: 'Password123' })).status, 200);
+  assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin', password: 'Password123' , email: 'admin@example.org' })).status, 200);
   await api('POST', '/api/auth/login', { username: 'admin', password: 'Password123' });
 
   await t.test('looks up model number: FDA data + reference suggestions', async () => {

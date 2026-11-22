@@ -11,6 +11,10 @@ const sqlType = f => SQL_TYPE[f.type] || 'TEXT';
 
 // Tables that are not exposed through the generic entity API.
 const SYSTEM_TABLES = `
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL, used_at TEXT, ip TEXT);
+CREATE INDEX IF NOT EXISTS ix_password_resets_user ON password_resets(user_id, created_at);
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL, ip TEXT, user_agent TEXT);

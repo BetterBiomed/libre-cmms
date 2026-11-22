@@ -33,7 +33,7 @@ test('PM Planner', async (t) => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   t.after(() => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
-  assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin', password: 'Password123' })).status, 200);
+  assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin', password: 'Password123' , email: 'admin@example.org' })).status, 200);
   await api('POST', '/api/auth/login', { username: 'admin', password: 'Password123' });
 
   const fac = (await api('POST', '/api/e/facilities', { name: 'Test Hospital' })).data.row;
@@ -90,7 +90,7 @@ test('PM Planner', async (t) => {
 
     // Moving a month later exceeds the 30-day grace: supervisor + reason required.
     assert.equal((await api('POST', '/api/pm/reschedule', { items, target_month: ym(2), day_mode: 'keep' })).status, 400);
-    const tech = (await api('POST', '/api/e/users', { username: 'tech', full_name: 'Tech One', role: 'technician' })).data.row;
+    const tech = (await api('POST', '/api/e/users', { username: 'tech', full_name: 'Tech One', role: 'technician', email: 'tech@example.org' })).data.row;
     await api('POST', `/api/users/${tech.id}/password`, { password: 'TechPass123' });
     const adminCookie = cookie; cookie = '';
     await api('POST', '/api/auth/login', { username: 'tech', password: 'TechPass123' });

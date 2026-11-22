@@ -264,11 +264,62 @@ function adjustStock(ctx, partId, body) {
   });
 }
 
+// ---- Purchase order approval ----
+// An administrator sets an approval limit (Settings: po_approval_limit). A PO whose total is at or
+// above the limit needs a supervisor's electronic signature before it can be ordered. The signature
+// covers the amount approved; if lines later raise the total above it, the PO needs approval again.
+const PO_ORDERED = ['Ordered', 'Partially Received', 'Received'];
+function poApprovalLimit(db) { const v = Number(getSetting(db, 'po_approval_limit', '')); return Number.isFinite(v) && v > 0 ? v : null; }
+function poApproval(db, po) {
+  const limit = poApprovalLimit(db);
+  const total = Number(po.total) || 0;
+  const required = limit != null && total >= limit;
+  const covered = po.approved_total != null && total <= Number(po.approved_total) + 0.005;
+  return { limit, total, required, approved: required ? covered : true, voided: required && po.approved_total != null && !covered, approved_total: po.approved_total, signature: po.approval_signature, approved_at: po.approved_at };
+}
+function poNeedsApprovalError(db, po) {
+  const a = poApproval(db, po);
+  if (a.approved) return null;
+  return new HttpError(409, `PO ${po.po_number || ''} totals ${money(a.total)}, at or above the ${money(a.limit)} approval limit. ${a.voided ? `It was approved for ${money(a.approved_total)} but the total has since increased, so it ` : 'It '}needs a supervisor's approval signature before it can be ordered.`);
+}
+const money = v => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+on('beforeSave', 'purchase_orders', (ctx, data, old) => {
+  // Approval fields are only set by the approve action.
+  if (!ctx.poApproving) for (const k of ['approval_signature', 'approved_at', 'approved_total']) delete data[k];
+  const status = data.status ?? old?.status;
+  if (PO_ORDERED.includes(status) && status !== old?.status) {
+    const err = poNeedsApprovalError(ctx.db, { ...(old || {}), ...data, total: old?.total ?? 0 });
+    if (err) throw err;
+  }
+});
+
 on('afterSave', 'po_lines', (ctx, row, old) => {
   const po = (row || old).po_id;
   const t = ctx.db.prepare('SELECT COALESCE(SUM(quantity * COALESCE(unit_cost,0)),0) t FROM po_lines WHERE po_id = ?').get(po).t;
   ctx.db.prepare('UPDATE purchase_orders SET total = ? WHERE id = ?').run(Math.round(t * 100) / 100, po);
+  // Lines on an already-ordered PO cannot push it past what was approved.
+  const p = getRaw(ctx.db, 'purchase_orders', po);
+  if (p && PO_ORDERED.includes(p.status)) { const err = poNeedsApprovalError(ctx.db, p); if (err) throw err; }
 });
+
+function approvePo(ctx, poId, body = {}) {
+  if (!MANAGER(ctx.user)) throw new HttpError(403, 'Supervisor role required to approve purchase orders.');
+  const po = getRaw(ctx.db, 'purchase_orders', poId);
+  if (!po) throw new HttpError(404, 'PO not found');
+  if (po.status === 'Cancelled') throw new HttpError(409, 'This PO is cancelled.');
+  const lines = ctx.db.prepare('SELECT COUNT(*) n FROM po_lines WHERE po_id = ?').get(poId).n;
+  if (!lines) throw new HttpError(400, 'Add the PO lines before approving.');
+  const a = poApproval(ctx.db, po);
+  if (!a.required) throw new HttpError(400, a.limit == null ? 'No approval limit is set, so this PO does not need approval.' : `This PO is below the ${money(a.limit)} approval limit and does not need approval.`);
+  if (a.approved) throw new HttpError(409, `Already approved for ${money(a.approved_total)}.`);
+  const sig = requireSignature(ctx, body.password);
+  return tx(ctx.db, () => {
+    crud.update({ ...sys(ctx), poApproving: true }, 'purchase_orders', poId, { approval_signature: `${sig} - Approved purchase of ${money(a.total)}`, approved_at: nowIso(), approved_total: a.total });
+    crud.audit(ctx, 'e-signature', 'purchase_orders', poId, `PO approval signature: ${sig} for ${money(a.total)} (limit ${money(a.limit)})`);
+    return getRaw(ctx.db, 'purchase_orders', poId);
+  });
+}
 on('beforeSave', 'po_lines', (ctx, data, old) => {
   if (!old && data.unit_cost == null && data.part_id) data.unit_cost = getRaw(ctx.db, 'parts', data.part_id)?.unit_cost ?? null;
 });
@@ -277,6 +328,8 @@ function receivePo(ctx, poId) {
   if (!WRITER(ctx.user)) throw new HttpError(403, 'Not permitted');
   const po = getRaw(ctx.db, 'purchase_orders', poId);
   if (!po) throw new HttpError(404, 'PO not found');
+  const needs = poNeedsApprovalError(ctx.db, po);
+  if (needs) throw needs;
   return tx(ctx.db, () => {
     const lines = ctx.db.prepare('SELECT * FROM po_lines WHERE po_id = ?').all(poId);
     for (const l of lines) {
@@ -796,10 +849,12 @@ function publicSubmit(ctx, body) {
   const problem = String(body.problem || '').trim();
   const name = String(body.requester_name || '').trim();
   if (!problem || !name) throw new HttpError(400, 'Your name and a problem description are required.');
+  const email = String(body.requester_email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'A valid email address is required so we can update you on your request.');
   const asset = findAssetByText(db, body.asset_text);
   const dept = body.department_id ? getRaw(db, 'departments', Number(body.department_id)) : null;
   const row = crud.create(sys({ ...ctx, user: ctx.user || null }), 'service_requests', {
-    problem: problem.slice(0, 4000), requester_name: name.slice(0, 200), requester_email: body.requester_email || null,
+    problem: problem.slice(0, 4000), requester_name: name.slice(0, 200), requester_email: email,
     requester_phone: String(body.requester_phone || '').slice(0, 50), department_id: dept?.id ?? asset?.department_id ?? null,
     room: String(body.room || '').slice(0, 100), asset_text: String(body.asset_text || '').slice(0, 100), asset_id: asset?.id ?? null,
     urgency: URGENCY_PRIORITY[body.urgency] ? body.urgency : 'Normal', status: 'New',
@@ -885,7 +940,7 @@ function runAlerts(ctx) {
 
 module.exports = {
   markUtl, resolveUtl, managers, sys,
-  addMonths, addDays, coverage, woAction, bulkWorkOrders, workload, generatePMs, approveDeferral, bulkSchedule, procAction, startRun, getRun,
+  addMonths, addDays, coverage, woAction, approvePo, poApproval, bulkWorkOrders, workload, generatePMs, approveDeferral, bulkSchedule, procAction, startRun, getRun,
   recordResults, completeRun, discardRun, matchRecall, recallWorkOrders, publicSubmit, publicStatus, publicFeedback,
   convertRequest, adjustStock, receivePo, runAlerts, notify, findAssetByText, limitsFor, serialMatcher,
 };

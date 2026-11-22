@@ -30,7 +30,7 @@ test('Inventory Mode end-to-end', async (t) => {
   base = `http://127.0.0.1:${server.address().port}`;
   t.after(() => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
 
-  assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin User', password: 'Password123', sample_data: true })).status, 200);
+  assert.equal((await api('POST', '/api/setup', { username: 'admin', full_name: 'Admin User', password: 'Password123', sample_data: true , email: 'admin@example.org' })).status, 200);
   assert.equal((await api('POST', '/api/auth/login', { username: 'admin', password: 'Password123' })).status, 200);
 
   const icu = db.prepare("SELECT * FROM departments WHERE name = 'ICU'").get();

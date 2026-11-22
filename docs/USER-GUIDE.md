@@ -14,14 +14,15 @@ Copyright © 2026 CreativeMed LLC — AGPL-3.0-or-later
 
 ## First steps for a new site (administrator)
 
-1. **Organization:** add Facilities and Departments (with cost centers).
-2. **Users:** add users and set each initial password (Users → open user → Set Password). Users must change it at first sign-in.
+1. **Organization:** add Facilities and Departments (with cost centers). In each department, fill in the **Department Manager** section: pick the manager's CMMS user account (their account email is used) or type a name and email. Unable To Locate reports go to this address.
+2. **Users:** add users with an **email address** (required for every user) and set each initial password (Users → open user → Set Password). Users must change it at first sign-in.
 3. **Equipment models:** add manufacturer, model and device type (or use **Device Lookup**), the PM interval and expected life. Or import assets by CSV, using `Manufacturer|Model` in the Model column to create models automatically.
 4. **Assets:** add or import inventory. Print labels (Assets → Print labels): choose **QR code, barcode, or both**, what the QR code contains, and the label size. Set the defaults under Settings → Asset labels.
 5. **Test equipment:** create assets for your analyzers and simulators, tick *This is test equipment*, and enter the calibration due date.
 6. **Procedures:** create a procedure, add steps (Pass/Fail, Measurement with limits, Instruction, Text Entry), then have a supervisor **Approve** it.
 7. **PM schedules:** on a model use **Bulk PM Schedules**, or add schedules per asset. Libre creates PM work orders automatically before they are due (checked hourly).
-8. **Settings:** set the Public URL and portal options, and review failure/cause/action codes.
+8. **Settings:** set the Public URL and portal options, the **PO approval limit** (see *Purchase order approval*), and review failure/cause/action codes.
+9. **Email:** under Settings → Email, enter your hospital's mail server (ask IT for the SMTP server, port, security and an account or relay), then **Send test email**. See *Email* below.
 
 ## Technician workflow
 
@@ -96,7 +97,38 @@ Use Inventory Mode to walk a department and confirm where every asset is.
 * On a **PM (or any) work order**, select **Unable To Locate** and describe where you searched. The work order goes **On Hold** and the asset is flagged UTL.
 * An asset can also be marked UTL from its own page, or automatically by an inventory.
 * When the asset turns up (scanned in any inventory, **Asset Located** on the work order, **Mark Located** on the asset, or any work completed on it), Libre resolves the UTL, releases on-hold work orders and notifies the technician.
+* **Equipment → Unable To Locate** lists every open UTL asset with a chip per department (asset count, and a warning when the department has no manager email). Click a department name to show only its assets, or tick its box to select all of them; filter by facility or search.
+* **Email department managers:** select assets from one or more departments and choose **Email department managers…**. Libre prepares one email per department, addressed to the department manager, using the Unable To Locate template, with a **PDF report** of that department's missing devices attached (and optionally a CSV). You can edit the To, Cc, subject and message before sending. If a department has no manager email, type one and tick *Save as this department's manager email*. Libre records when and to whom each UTL was emailed (the *Manager Emailed* column), and every email is in the email log.
+* **Download PDF** produces the same report without emailing it.
 * Reports: **Unable To Locate (UTL) Assets** (by department, source, open/resolved, days missing), **Unable To Locate Metrics by Department** (UTL rate, located, average days to locate, last inventory), **Inventory Red & Yellow Flags**. **PM Compliance** also shows a UTL column.
+
+## Email
+
+Libre sends email through your own mail server (SMTP). Set it up under **Settings → Email** (administrators):
+
+* **SMTP server, port and security:** STARTTLS on port 587 (Microsoft 365, Gmail, most servers), SSL/TLS on 465, or None on port 25 for an internal relay. Enter a user name and password if the server needs them; the password is stored only on the server and never shown again.
+* **From address / name / reply-to:** for example `clinical.engineering@hospital.org`, "Clinical Engineering". Use a shared mailbox as reply-to so department managers' replies reach the whole team.
+* **Send test email** checks the settings. Every email sent (or failed) is listed in the **email log**.
+* **Templates:** the Unable To Locate and PM progress subject and message can be edited. Placeholders in braces, such as `{manager_name}`, `{department}`, `{count}`, `{month}` or `{pct}`, are filled in for each email; **Restore default** brings back the original text. The default Unable To Locate message reads: *"Clinical Engineering is unable to find the assets in the attached report and are unable to provide necessary routine maintenance to ensure patient safety. Can you please assist with locating these medical devices? The Unable to Locate reports are being tracked by hospital administration. Thank you very much for your help."*
+
+Email addresses are required for every user and on every service request, so reports and updates always have somewhere to go.
+
+### PM progress emails
+
+In the **PM Planner**, supervisors choose **Email PM progress…**, pick a month and tick technicians and/or teams. Each technician gets their own report; a team's report goes to every team member. The email states how many PMs are due in the month, completed, remaining and overdue, and attaches a PDF listing the PMs still open. **Preview PDF** shows a report before sending.
+
+To send these automatically, turn on **Automatic monthly PM progress** under Settings → Email and choose the day of the month. Every active technician with open PM work then receives their report once a month.
+
+### Forgot password
+
+Users who forget their password choose **Forgot password?** on the sign-in page and enter their user name or email address. Libre emails a link to the address on the account; the link opens a page where they choose a new password (same rules as always: at least 10 characters with letters and numbers).
+
+* It needs **email** set up and the **Public URL** filled in (Settings → Organization & portal), because the emailed link points there. Until both are set, *Forgot password?* tells users to contact their Libre administrator.
+* Each link works **once** and expires after **60 minutes**. Asking again replaces the earlier link, and an account can receive at most 3 links an hour.
+* The sign-in page gives the same answer whether or not the account exists, so it cannot be used to discover user names.
+* Resetting the password **signs the user out on every device**, unlocks an account that was temporarily locked after failed sign-ins, and emails a "your password was changed" notice. Inactive accounts never receive a link.
+* Requests and resets are recorded in the audit trail, and the emails in the email log.
+* Administrators can turn it off under **Settings → Email → Forgot password**; passwords are then reset only by an administrator (Users → open user → Set Password).
 
 ## Assigning work in bulk and to teams
 
@@ -117,6 +149,15 @@ Clinical staff go to `http://<server>/portal`, or scan the URL printed on the as
 describe the problem and receive a request number and status link. Staff see new requests under
 **Help Desk → Service Requests** and select **Convert to Work Order**. When the work order is
 completed, the request closes automatically and the requester can rate the service.
+
+## Purchase order approval
+
+An administrator sets the **PO approval limit** under Settings → Organization & portal (leave it blank for no approval step).
+
+* A purchase order whose total is **at or above the limit** shows *Supervisor approval required* and cannot be set to **Ordered** or received into stock until a supervisor or administrator selects **Approve PO** and signs with their password.
+* POs below the limit are ordered as before.
+* The signature records who approved, when, and the **approved amount**, and is written to the audit trail. The approval fields cannot be typed in.
+* The approval covers that amount only. If lines are added to a draft PO so the total goes above the approved amount, it needs approval again. On a PO that has already been ordered, a line change that would go above the approved amount is refused.
 
 ## Recalls
 

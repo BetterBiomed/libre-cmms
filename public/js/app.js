@@ -152,8 +152,9 @@ async function boot() {
   try {
     const st = await api('GET', '/api/setup/status');
     if (st.needsSetup) return showSetup(st);
+    if (location.hash.startsWith('#/reset-password')) return showResetPassword(st);
     const me = await api('GET', '/api/auth/me', undefined, { noRedirect: true }).catch(e => { if (e.status === 401) return null; throw e; });
-    if (!me) return showLogin(st.org_name);
+    if (!me) return showLogin(st.org_name, st);
     S.user = me.user;
     if (S.user.must_change_password) return showChangePassword(true);
     await startApp();
@@ -169,7 +170,7 @@ function authShell(title, ...kids) {
     h('div', { class: 'muted small' }, 'Libre - open-source CMMS. Copyright © 2026 CreativeMed LLC.'))));
 }
 
-function showLogin(org) {
+function showLogin(org, st = {}, notice = null) {
   const u = h('input', { type: 'text', autocomplete: 'username', autofocus: true });
   const p = h('input', { type: 'password', autocomplete: 'current-password' });
   const err = h('div', { class: 'banner bad', style: 'display:none' });
@@ -183,10 +184,66 @@ function showLogin(org) {
       await startApp();
     } catch (ex) { err.textContent = ex.message; err.style.display = ''; }
   };
-  authShell(org || 'Sign in', h('form', { class: 'form stack', onsubmit: submit }, err,
+  authShell(org || 'Sign in', h('form', { class: 'form stack', onsubmit: submit }, notice ? h('div', { class: 'banner ok' }, notice) : null, err,
     h('div', {}, h('label', {}, 'Username'), u), h('div', {}, h('label', {}, 'Password'), p),
     h('button', { class: 'btn primary', type: 'submit' }, 'Sign in'),
+    h('div', { class: 'small' }, h('a', { href: '#', onclick: ev => { ev.preventDefault(); showForgotPassword(org, st, u.value); } }, 'Forgot password?')),
     h('div', { class: 'small' }, h('a', { href: '/portal' }, 'Request equipment service without an account →'))));
+}
+
+function showForgotPassword(org, st = {}, typed = '') {
+  const back = h('div', { class: 'small' }, h('a', { href: '#', onclick: ev => { ev.preventDefault(); showLogin(org, st); } }, '\u2190 Back to sign in'));
+  if (!st.password_reset) {
+    authShell('Forgot password', h('div', { class: 'stack' },
+      h('p', {}, 'Please contact your Libre administrator (or Clinical Engineering) to reset your password.'),
+      h('p', { class: 'muted small' }, 'Resetting a password by email is not available on this server. An administrator can turn it on by setting up email and the Public URL under Settings.'), back));
+    return;
+  }
+  const id = h('input', { type: 'text', autocomplete: 'username', value: typed, autofocus: true });
+  const msg = h('div', { class: 'banner', style: 'display:none' });
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Email me a reset link');
+  const submit = async e => {
+    e.preventDefault();
+    btn.disabled = true;
+    try {
+      const r = await api('POST', '/api/auth/forgot', { identifier: id.value.trim() }, { noRedirect: true });
+      msg.className = 'banner ok'; msg.textContent = r.message;
+    } catch (ex) { msg.className = 'banner bad'; msg.textContent = ex.message; btn.disabled = false; }
+    msg.style.display = '';
+  };
+  authShell('Forgot password', h('form', { class: 'form stack', onsubmit: submit },
+    h('p', { class: 'muted' }, 'Enter your user name or the email address on your account. We will email you a link to choose a new password.'),
+    msg, h('div', {}, h('label', {}, 'User name or email'), id), btn, back));
+}
+
+async function showResetPassword(st) {
+  const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token') || '';
+  history.replaceState(null, '', location.pathname); // keep the token out of history and screenshots
+  const toLogin = notice => { location.hash = ''; showLogin(st.org_name, st, notice); };
+  let info;
+  try { info = await api('POST', '/api/auth/reset/check', { token }, { noRedirect: true }); } catch (ex) {
+    authShell('Reset password', h('div', { class: 'stack' }, h('div', { class: 'banner bad' }, ex.message),
+      h('div', { class: 'small' }, h('a', { href: '#', onclick: ev => { ev.preventDefault(); showForgotPassword(st.org_name, st); } }, 'Request a new link'), ' \u00b7 ',
+        h('a', { href: '#', onclick: ev => { ev.preventDefault(); toLogin(); } }, 'Back to sign in'))));
+    return;
+  }
+  const p1 = h('input', { type: 'password', autocomplete: 'new-password', autofocus: true });
+  const p2 = h('input', { type: 'password', autocomplete: 'new-password' });
+  const err = h('div', { class: 'banner bad', style: 'display:none' });
+  const submit = async e => {
+    e.preventDefault();
+    if (p1.value !== p2.value) { err.textContent = 'Passwords do not match'; err.style.display = ''; return; }
+    try {
+      await api('POST', '/api/auth/reset', { token, password: p1.value }, { noRedirect: true });
+      toLogin('Your password has been changed and you were signed out on other devices. Sign in with your new password.');
+    } catch (ex) { err.textContent = ex.message; err.style.display = ''; }
+  };
+  authShell('Reset password', h('form', { class: 'form stack', onsubmit: submit },
+    h('p', {}, 'Choose a new password for ', h('strong', {}, info.full_name), ` (user name ${info.username}).`), err,
+    h('input', { type: 'text', autocomplete: 'username', value: info.username, style: 'display:none', readonly: true }),
+    h('div', {}, h('label', {}, 'New password'), p1, h('div', { class: 'hint' }, 'At least 10 characters with letters and numbers.')),
+    h('div', {}, h('label', {}, 'Confirm new password'), p2),
+    h('button', { class: 'btn primary', type: 'submit' }, 'Set new password')));
 }
 
 function showSetup() {
@@ -209,7 +266,7 @@ function showSetup() {
       h('div', {}, h('label', {}, 'Organization name'), f.org),
       h('div', {}, h('label', { class: 'req' }, 'Your full name'), f.name),
       h('div', {}, h('label', { class: 'req' }, 'Administrator username'), f.user),
-      h('div', {}, h('label', {}, 'Email'), f.email),
+      h('div', {}, h('label', { class: 'req' }, 'Email'), f.email, h('div', { class: 'hint' }, 'Required. Used for Unable To Locate and PM progress emails.')),
       h('div', {}, h('label', { class: 'req' }, 'Password'), f.pw, h('div', { class: 'hint' }, 'At least 10 characters with letters and numbers.')),
       h('div', {}, h('label', { class: 'req' }, 'Confirm password'), f.pw2),
       h('label', { class: 'check', style: 'padding-top:0' }, f.sample, 'Load demonstration data (fictional hospital, equipment and procedures)'),
@@ -322,6 +379,7 @@ function toggleNotifications(bell) {
 // Router
 // ======================================================================
 async function route() {
+  if (location.hash.startsWith('#/reset-password')) return showResetPassword(await api('GET', '/api/setup/status'));
   const content = $('#content');
   if (!content) return;
   const [path, query] = location.hash.slice(1).split('?');
@@ -392,7 +450,7 @@ async function viewDashboard(el) {
       tile(k.cal_due, 'Test equipment cal due (30d)', '#/list/assets?view=cal_due', k.cal_due ? 'warn' : ''),
       tile(k.contracts_expiring, 'Contracts expiring (90d)', '#/list/contracts?view=expiring', k.contracts_expiring ? 'warn' : ''),
       tile(k.certs_expiring, 'Certifications expiring (60d)', '#/list/certifications?view=expiring', k.certs_expiring ? 'warn' : ''),
-      tile(k.utl_assets, 'Unable To Locate assets', '#/reports/unable_to_locate?utl_status=Open', k.utl_assets ? 'bad' : 'ok'),
+      tile(k.utl_assets, 'Unable To Locate assets', '#/list/utl_events', k.utl_assets ? 'bad' : 'ok'),
       k.inventories_open ? tile(k.inventories_open, 'Inventories in progress', '#/inventory', 'warn') : null),
     h('div', { class: 'grid g2' },
       h('div', { class: 'card' }, h('h2', {}, 'My open work'), mine),
@@ -413,6 +471,7 @@ async function viewList(el, name, params) {
   const e = ent(name);
   if (!e) throw new Error('Unknown list');
   if (name === 'work_orders') return viewWorkOrders(el, params);
+  if (name === 'utl_events' && !params.all) return viewUtl(el, params);
   const state = { q: params.q || '', view: params.view || '', sort: '', dir: 'asc', offset: 0, limit: 50 };
   const tableHost = h('div');
   const searchInp = h('input', { type: 'search', placeholder: `Search ${e.plural.toLowerCase()}…`, value: state.q });
@@ -1129,6 +1188,18 @@ async function viewDetail(el, name, id) {
       await api('POST', `/api/parts/${id}/stock`, r).then(() => { toast('Stock updated'); reload(); }).catch(fail);
     } }, 'Receive / Adjust Stock'));
   }
+  if (name === 'purchase_orders') {
+    const ap = await api('GET', `/api/po/${id}/approval`).catch(() => null);
+    if (ap?.required && ap.approved) extraTop.push(h('div', { class: 'banner ok' }, `Approved for ${money(ap.approved_total)}: ${ap.signature} (${dt(ap.approved_at)}).`));
+    else if (ap?.required) {
+      extraTop.push(h('div', { class: 'banner warn' }, h('strong', {}, 'Supervisor approval required. '),
+        `This PO totals ${money(ap.total)}, at or above the ${money(ap.limit)} approval limit${ap.voided ? `; it was approved for ${money(ap.approved_total)} but the total has since increased` : ''}. It cannot be ordered or received until a supervisor signs.`));
+      if (isMgr && row.status !== 'Cancelled') actions.push(h('button', { class: 'btn primary', onclick: async () => {
+        const r = await signature(`Approve ${row.po_number} for ${money(ap.total)}`); if (!r) return;
+        await api('POST', `/api/po/${id}/approve`, { password: r.password }).then(() => { toast('PO approved'); reload(); }).catch(fail);
+      } }, '\u270D Approve PO'));
+    }
+  }
   if (name === 'purchase_orders' && e.canWrite && row.status !== 'Received') {
     actions.push(h('button', { class: 'btn primary', onclick: async () => {
       if (!await confirmBox('Receive PO', 'Receive all remaining quantities on this PO into stock?')) return;
@@ -1198,7 +1269,7 @@ async function viewDetail(el, name, id) {
   if (name === 'work_orders') tabs.unshift({ title: 'Testing', render: host => woTesting(host, row, reload) });
   if (name === 'assets') tabs.push({ title: 'Network', render: host => { host.replaceChildren(h('p', { class: 'muted' }, 'Network and cybersecurity fields are shown in the details above. See the Cybersecurity report for the full networked-device inventory.'), h('a', { class: 'btn', href: '#/reports/cybersecurity' }, 'Open report')); } });
   tabs.push({ title: 'Attachments', render: host => attachments(host, name, id, e.canWrite || name === 'service_requests') });
-  tabs.push({ title: 'History', render: host => history(host, name, id) });
+  tabs.push({ title: 'History', render: host => historyTab(host, name, id) });
   const tabHost = h('div');
   const tabBar = h('div', { class: 'tabs' });
   const select = i => { $$('button', tabBar).forEach((b, j) => b.classList.toggle('active', i === j)); tabHost.replaceChildren(h('div', { class: 'muted' }, 'Loading…')); tabs[i].render(tabHost); };
@@ -1271,7 +1342,7 @@ async function attachments(host, name, id, canWrite) {
       } }, '×') : null)))))) : h('p', { class: 'muted' }, 'No attachments.'));
 }
 
-async function history(host, name, id) {
+async function historyTab(host, name, id) {
   const r = await api('GET', `/api/audit?` + qs({ entity: name, entity_id: id }));
   host.replaceChildren(r.rows.length ? auditTable(r.rows) : h('p', { class: 'muted' }, 'No history.'));
 }
@@ -1543,6 +1614,7 @@ async function viewSettings(el) {
     sla_emergency_hours: h('input', { type: 'number', value: s.settings.sla_emergency_hours || 1 }),
     sla_urgent_hours: h('input', { type: 'number', value: s.settings.sla_urgent_hours || 4 }),
     sla_high_hours: h('input', { type: 'number', value: s.settings.sla_high_hours || 24 }),
+    po_approval_limit: h('input', { type: 'number', min: 0, step: '0.01', value: s.settings.po_approval_limit || '', placeholder: 'No limit' }),
     label_code: h('select', {}, h('option', { value: 'qr' }, 'QR code'), h('option', { value: 'barcode' }, 'Barcode (Code 128)'), h('option', { value: 'both' }, 'QR code + barcode')),
     label_qr_content: h('select', {}, h('option', { value: 'url' }, 'Service request link (any phone camera)'), h('option', { value: 'tag' }, 'Asset tag only')),
     label_size: h('select', {}, Object.entries(LABEL_SIZES).map(([k, v]) => h('option', { value: k }, v.label))),
@@ -1563,12 +1635,14 @@ async function viewSettings(el) {
     h('div', { class: 'card form' }, h('h2', {}, 'Organization & portal'), h('div', { class: 'fields' },
       field('Organization name', inp.org_name), field('Public URL', inp.public_url, 'Used on printed asset labels so staff can scan to request service.'),
       field('Service request portal', inp.portal_enabled, 'Allows anyone who can reach the server to submit requests at /portal'), field('Portal message', inp.portal_message),
+      field('PO approval limit ($)', inp.po_approval_limit, 'Purchase orders totaling this amount or more need a supervisor\u2019s signature before they can be ordered. Leave blank for no approval step.'),
       field('Escalate Emergency WOs after (hours)', inp.sla_emergency_hours), field('Escalate Urgent WOs after (hours)', inp.sla_urgent_hours), field('Escalate High WOs after (hours)', inp.sla_high_hours),
       h('div', { class: 'section-title' }, 'Asset labels (defaults; can be changed when printing)'),
       field('Code type', inp.label_code), field('QR code contains', inp.label_qr_content, 'The service request link lets anyone scan with a phone camera to report a problem with that device. Requires Public URL.'),
       field('Label size', inp.label_size)),
     h('button', { class: 'btn primary', style: 'margin-top:1rem', onclick: () => api('PUT', '/api/settings', Object.fromEntries(Object.entries(inp).map(([k, i]) => [k, i.value])))
       .then(async () => { S.meta = await api('GET', '/api/meta'); localStorage.removeItem('libre.labels'); toast('Settings saved'); }).catch(fail) }, 'Save settings')),
+    emailSettingsCard(s),
     h('div', { class: 'card form' }, h('h2', {}, 'Failure, cause & action codes'), h('div', { class: 'fields' }, lookupBoxes)),
     h('div', { class: 'card' }, h('h2', {}, 'Backups'),
       h('p', { class: 'muted' }, `Automatic daily backups are written to ${b.dir}. Copy this folder to another machine or offsite storage regularly.`),
@@ -1576,6 +1650,233 @@ async function viewSettings(el) {
       h('div', { class: 'table-wrap', style: 'margin-top:.75rem' }, h('table', {}, h('tbody', {}, b.rows.map(r => h('tr', {}, h('td', {}, r.name), h('td', { class: 'num' }, `${(r.size / 1048576).toFixed(2)} MB`),
         h('td', {}, h('a', { href: `/api/backups/${encodeURIComponent(r.name)}` }, 'Download')))))))),
     h('div', { class: 'card' }, h('h2', {}, 'Server'), h('div', { class: 'fields' }, Object.entries(s.server).map(([k, v]) => h('div', { class: 'field' }, h('div', { class: 'k' }, k), h('div', { class: 'v' }, String(v)))))));
+}
+
+// ======================================================================
+// Unable To Locate: select by department, PDF report, email department managers
+// ======================================================================
+async function viewUtl(el, params) {
+  const writer = ['admin', 'supervisor', 'technician'].includes(S.user.role);
+  const st = { facility: params.facility_id || '', q: params.q || '', depts: new Set(params.department_id ? [Number(params.department_id)] : []), selected: new Set(), data: null };
+  const facSel = h('select', { style: 'width:auto' }, h('option', { value: '' }, 'All facilities'));
+  const search = h('input', { type: 'search', placeholder: 'Search asset tag, serial, model…', value: st.q });
+  const chips = h('div', { class: 'dept-chips' });
+  const host = h('div');
+  const bar = h('div', { class: 'bulkbar', style: 'display:none' });
+  const banner = h('div');
+  const joinTo = v => (Array.isArray(v) ? v.join(', ') : v || '');
+
+  const visible = () => st.data.rows.filter(r => !st.depts.size || st.depts.has(r.department_id || 0));
+  function drawBar() {
+    const n = st.selected.size;
+    bar.style.display = n ? '' : 'none';
+    const depts = new Set(st.data.rows.filter(r => st.selected.has(r.id)).map(r => r.department));
+    bar.replaceChildren(h('strong', {}, `${n} selected`), h('span', { class: 'muted' }, ` from ${depts.size} department(s)`),
+      writer ? h('button', { class: 'btn primary', onclick: () => utlEmailDialog([...st.selected], () => { st.selected.clear(); load(); }).catch(fail) }, '✉ Email department managers…') : null,
+      h('a', { class: 'btn', href: `/api/utl/report.pdf?utl_ids=${[...st.selected].join(',')}`, target: '_blank' }, 'Download PDF'),
+      h('button', { class: 'btn', onclick: () => { st.selected.clear(); draw(); } }, 'Clear'));
+  }
+  function drawChips() {
+    const byDept = new Map();
+    for (const r of st.data.rows) {
+      const k = r.department_id || 0;
+      if (!byDept.has(k)) byDept.set(k, { id: k, name: r.department, facility: r.facility, n: 0, manager: r.manager_email, mname: r.manager_name, notified: 0 });
+      const d = byDept.get(k); d.n++; if (r.manager_notified_at) d.notified++;
+    }
+    if (!byDept.size) { chips.replaceChildren(); return; }
+    chips.replaceChildren(h('div', { class: 'small muted', style: 'width:100%' }, 'Departments with assets that cannot be located. Click a name to show only that department; tick its box to select all of its assets.'),
+      [...byDept.values()].map(d => {
+        const on = st.depts.has(d.id);
+        const ids = st.data.rows.filter(r => (r.department_id || 0) === d.id).map(r => r.id);
+        const all = ids.every(i => st.selected.has(i));
+        return h('div', { class: 'chip' + (on ? ' on' : ''), title: d.manager ? `Manager: ${d.mname || ''} <${d.manager}>` : 'No department manager email on file' },
+          h('input', { type: 'checkbox', checked: all, title: 'Select all assets in this department', onchange: ev => { ids.forEach(i => (ev.target.checked ? st.selected.add(i) : st.selected.delete(i))); draw(); } }),
+          h('span', { class: 'click', onclick: () => { if (on) st.depts.delete(d.id); else st.depts.add(d.id); draw(); } },
+            h('strong', {}, d.name), ' ', h('span', { class: 'pill bad' }, d.n), d.manager ? '' : h('span', { class: 'pill warn', style: 'margin-left:.3rem' }, 'no manager email'),
+            d.notified ? h('span', { class: 'small muted' }, ` · ${d.notified} emailed`) : '',
+            !st.facility && d.facility ? h('div', { class: 'small muted' }, d.facility) : null));
+      }));
+  }
+  function draw() {
+    drawChips(); drawBar();
+    const rows = visible();
+    if (!rows.length) { host.replaceChildren(h('div', { class: 'card muted' }, st.data.rows.length ? 'No assets in the chosen departments.' : 'No open Unable To Locate assets.')); return; }
+    const head = h('input', { type: 'checkbox', checked: rows.every(r => st.selected.has(r.id)), title: 'Select all shown', onchange: ev => { rows.forEach(r => (ev.target.checked ? st.selected.add(r.id) : st.selected.delete(r.id))); draw(); } });
+    host.replaceChildren(h('div', { class: 'table-wrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', { class: 'sel' }, head), ['Asset Tag', 'Device', 'Serial #', 'Department', 'Last Seen', 'Reported', 'Days', 'Found Missing During', 'Manager Emailed'].map(x => h('th', {}, x)))),
+      h('tbody', {}, rows.map(r => h('tr', { class: st.selected.has(r.id) ? 'selected' : '' },
+        h('td', { class: 'sel' }, h('input', { type: 'checkbox', checked: st.selected.has(r.id), onchange: ev => { if (ev.target.checked) st.selected.add(r.id); else st.selected.delete(r.id); draw(); } })),
+        h('td', {}, h('a', { href: `#/assets/${r.asset_id}` }, r.asset_tag)), h('td', {}, r.device), h('td', {}, r.serial_number),
+        h('td', {}, r.department, h('div', { class: 'small muted' }, r.facility)), h('td', {}, r.last_seen, r.last_seen_date ? h('div', { class: 'small muted' }, r.last_seen_date) : null),
+        h('td', {}, h('a', { href: `#/utl_events/${r.id}` }, r.reported)), h('td', { class: 'num' }, r.days_missing), h('td', {}, r.source),
+        h('td', {}, r.manager_notified_at ? dt(r.manager_notified_at) : h('span', { class: 'muted' }, 'Not yet'))))))));
+  }
+  async function load() {
+    st.data = await api('GET', '/api/utl/open?' + qs({ facility_id: st.facility, q: st.q }));
+    const ids = new Set(st.data.rows.map(r => r.id));
+    for (const i of [...st.selected]) if (!ids.has(i)) st.selected.delete(i);
+    banner.replaceChildren(!st.data.email_configured && writer ? h('div', { class: 'banner warn' }, 'Email is not set up yet, so reports can be downloaded as PDF but not emailed. ',
+      S.user.role === 'admin' ? h('a', { href: '#/settings' }, 'Set up email in Settings.') : 'Ask an administrator to set up email in Settings.') : null);
+    draw();
+  }
+  const facilities = (await api('GET', '/api/e/facilities?limit=500&sort=name')).rows;
+  facSel.append(...facilities.map(f => h('option', { value: f.id }, f.name)));
+  facSel.value = st.facility;
+  facSel.addEventListener('change', () => { st.facility = facSel.value; st.depts.clear(); load().catch(fail); });
+  search.addEventListener('input', debounce(() => { st.q = search.value; load().catch(fail); }));
+  el.replaceChildren(
+    h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Unable To Locate'),
+      h('div', { class: 'muted' }, 'Assets Clinical Engineering could not find. Select assets from one or more departments to email each department manager a report asking for help locating them.')),
+      h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#/reports/unable_to_locate?utl_status=Open' }, 'UTL report'), h('a', { class: 'btn', href: '#/list/utl_events?all=1' }, 'All UTL records (history)'))),
+    banner, h('div', { class: 'card toolbar' }, facSel, search), h('div', { class: 'card' }, chips), bar, host);
+  await load();
+}
+
+function sentResults(res) {
+  const to = v => (Array.isArray(v) ? v.join(', ') : v || '');
+  return h('div', {}, h('p', {}, `${res.sent} sent${res.failed ? `, ${res.failed} failed` : ''}.`),
+    h('ul', {}, res.results.map(r => h('li', {}, r.ok ? '✅ ' : '❌ ', `${r.department || r.name}: ${to(r.to)}`, r.error ? h('div', { class: 'small', style: 'color:var(--bad)' }, r.error) : null))));
+}
+
+// Preview one email per department, let the user edit recipients and text, then send.
+async function utlEmailDialog(ids, after) {
+  const p = await api('POST', '/api/utl/email/preview', { utl_ids: ids });
+  if (!p.email_configured) { toast('Email is not set up. An administrator can set it up in Settings.', true); return; }
+  const forms = p.groups.map(g => {
+    const to = h('input', { type: 'text', value: g.to, placeholder: 'manager@hospital.org' });
+    const cc = h('input', { type: 'text', placeholder: 'Optional, comma separated' });
+    const subject = h('input', { type: 'text', value: g.subject });
+    const body = h('textarea', { rows: 9 }, g.body);
+    const save = h('input', { type: 'checkbox', checked: !g.to });
+    const include = h('input', { type: 'checkbox', checked: true });
+    const node = h('div', { class: 'card stack', style: 'margin:0 0 .75rem' },
+      h('label', { style: 'display:flex;gap:.5rem;align-items:center;flex-wrap:wrap' }, include, h('strong', {}, g.department), h('span', { class: 'muted small' }, `${g.facility} · ${g.count} asset(s)`),
+        g.previously_notified ? h('span', { class: 'pill warn' }, `${g.previously_notified} emailed before`) : null),
+      g.to ? h('div', { class: 'small muted' }, `Manager: ${g.manager.name || ''} <${g.to}> (from the ${g.manager.source})`) :
+        h('div', { class: 'banner warn small' }, 'No department manager email on file. Type the manager’s email below.'),
+      h('div', { class: 'fields' }, h('div', {}, h('label', {}, 'To'), to), h('div', {}, h('label', {}, 'Cc'), cc)),
+      !g.to ? h('label', { class: 'small' }, save, ' Save as this department’s manager email') : null,
+      h('div', {}, h('label', {}, 'Subject'), subject), h('div', {}, h('label', {}, 'Message'), body),
+      h('div', { class: 'small muted' }, '\u{1F4CE} ', h('a', { href: `/api/utl/report.pdf?utl_ids=${g.utl_ids.join(',')}`, target: '_blank' }, `Unable To Locate report (PDF, ${g.count} asset(s))`),
+        ` — ${g.assets.slice(0, 8).join(', ')}${g.assets.length > 8 ? '…' : ''}`));
+    return { g, node, include, get: () => ({ department: g.department, department_id: g.department_id, utl_ids: g.utl_ids, to: to.value.trim(), cc: cc.value.trim(), subject: subject.value, body: body.value, save_as_manager: !g.to && save.checked }) };
+  });
+  const csv = h('input', { type: 'checkbox' });
+  const ccMe = h('input', { type: 'checkbox', checked: true });
+  const body = h('div', {}, h('p', { class: 'muted' }, `One email per department (${p.groups.length}), each with its own PDF report attached. You can edit any message before sending.`),
+    forms.map(f => f.node), h('div', { style: 'display:flex;gap:1.5rem;flex-wrap:wrap' }, h('label', {}, csv, ' Also attach a CSV (spreadsheet)'), h('label', {}, ccMe, ' Send me a copy')));
+  const res = await modal('Email Unable To Locate reports', body, [{ label: 'Cancel', value: null }, {
+    label: 'Send', cls: 'primary', action: async () => {
+      const groups = forms.filter(f => f.include.checked).map(f => f.get());
+      if (!groups.length) { toast('Choose at least one department', true); return false; }
+      const missing = groups.find(g => !g.to);
+      if (missing) { toast(`Enter a To address for ${missing.department}`, true); return false; }
+      return api('POST', '/api/utl/email', { groups, attach_csv: csv.checked, cc_me: ccMe.checked });
+    },
+  }], { wide: true, sticky: true });
+  if (!res) return;
+  await modal('Unable To Locate emails', sentResults(res), [{ label: 'OK', cls: 'primary', value: true }]);
+  after?.();
+}
+
+// PM progress report by email to technicians and/or teams (supervisors and admins).
+async function pmProgressDialog(month) {
+  const [techs, teams] = await Promise.all([api('GET', '/api/e/users?' + qs({ view: 'techs', limit: 500, sort: 'full_name' })), api('GET', '/api/e/teams?limit=500&sort=name')]);
+  const monthInp = h('input', { type: 'month', value: month || today().slice(0, 7) });
+  const box = (row, label, sub) => { const c = h('input', { type: 'checkbox' }); return { c, row, node: h('label', { style: 'display:block' }, c, ' ', label, sub ? h('span', { class: 'small muted' }, ` ${sub}`) : null) }; };
+  const tb = techs.rows.map(u => box(u, u.full_name, u.email ? '' : '(no email)'));
+  const mb = teams.rows.map(t => box(t, t.name));
+  const setAll = (list, v) => { list.forEach(b => { b.c.checked = v; }); showPreview(); };
+  const preview = h('div', { class: 'small' });
+  async function showPreview() {
+    const b = tb.find(x => x.c.checked); const t = b ? null : mb.find(x => x.c.checked);
+    if (!b && !t) { preview.replaceChildren(h('span', { class: 'muted' }, 'Tick a technician or team to preview their numbers.')); return; }
+    const q = { month: monthInp.value, ...(b ? { user_id: b.row.id } : { team_id: t.row.id }) };
+    const d = await api('GET', '/api/pm/progress?' + qs(q)).catch(fail); if (!d) return;
+    preview.replaceChildren(h('strong', {}, b ? b.row.full_name : t.row.name), `: ${d.completed} of ${d.due} complete (${d.pct}%), ${d.remaining} remaining, ${d.overdue} overdue. `,
+      h('a', { href: '/api/pm/progress.pdf?' + qs(q), target: '_blank' }, 'Preview PDF'));
+  }
+  [...tb, ...mb].forEach(b => b.c.addEventListener('change', showPreview));
+  monthInp.addEventListener('change', showPreview);
+  const ccMe = h('input', { type: 'checkbox' });
+  const body = h('div', { class: 'stack' }, h('div', {}, h('label', {}, 'Month'), monthInp),
+    h('div', { class: 'grid g2' },
+      h('div', {}, h('h3', {}, 'Technicians ', h('button', { class: 'btn small', onclick: () => setAll(tb, true) }, 'All'), ' ', h('button', { class: 'btn small', onclick: () => setAll(tb, false) }, 'None')),
+        h('div', { class: 'small muted' }, 'Each technician gets their own report.'), tb.length ? tb.map(b => b.node) : h('div', { class: 'muted' }, 'No technicians')),
+      h('div', {}, h('h3', {}, 'Teams'), h('div', { class: 'small muted' }, 'Every team member gets the team’s report.'), mb.length ? mb.map(b => b.node) : h('div', { class: 'muted' }, 'No teams'))),
+    preview, h('label', {}, ccMe, ' Send me a copy'),
+    h('div', { class: 'small muted' }, 'A PDF listing the PMs still open is attached. The message text can be changed in Settings → Email.'));
+  showPreview();
+  const res = await modal('Email PM progress', body, [{ label: 'Cancel', value: null }, { label: 'Send', cls: 'primary', action: () => {
+    const technician_ids = tb.filter(b => b.c.checked).map(b => b.row.id); const team_ids = mb.filter(b => b.c.checked).map(b => b.row.id);
+    if (!technician_ids.length && !team_ids.length) { toast('Choose at least one technician or team', true); return false; }
+    return api('POST', '/api/pm/progress/email', { month: monthInp.value, technician_ids, team_ids, cc_me: ccMe.checked });
+  } }], { wide: true });
+  if (!res) return;
+  await modal('PM progress emails', sentResults(res), [{ label: 'OK', cls: 'primary', value: true }]);
+}
+
+// Settings: outgoing email (SMTP), message templates, automatic monthly PM progress.
+function emailSettingsCard(s) {
+  const v = k => s.settings[k] ?? '';
+  const inp = {
+    smtp_host: h('input', { type: 'text', value: v('smtp_host'), placeholder: 'smtp.office365.com' }),
+    smtp_port: h('input', { type: 'number', value: v('smtp_port') || '587' }),
+    smtp_security: h('select', {}, h('option', { value: 'starttls' }, 'STARTTLS (usually port 587)'), h('option', { value: 'ssl' }, 'SSL/TLS (usually port 465)'), h('option', { value: 'none' }, 'None (internal relay, usually port 25)')),
+    smtp_user: h('input', { type: 'text', value: v('smtp_user'), autocomplete: 'off', placeholder: 'Leave blank for an unauthenticated relay' }),
+    smtp_pass: h('input', { type: 'password', value: '', autocomplete: 'new-password', placeholder: s.settings.smtp_pass_set ? '•••••••• (saved; type to replace)' : '' }),
+    smtp_from: h('input', { type: 'email', value: v('smtp_from'), placeholder: 'clinical.engineering@hospital.org' }),
+    smtp_from_name: h('input', { type: 'text', value: v('smtp_from_name'), placeholder: 'Clinical Engineering' }),
+    smtp_reply_to: h('input', { type: 'email', value: v('smtp_reply_to') }),
+    smtp_allow_self_signed: h('select', {}, h('option', { value: '0' }, 'No (recommended)'), h('option', { value: '1' }, 'Yes (internal server with its own certificate)')),
+    email_utl_subject: h('input', { type: 'text', value: v('email_utl_subject') }),
+    email_utl_body: h('textarea', { rows: 12 }, v('email_utl_body')),
+    email_pm_subject: h('input', { type: 'text', value: v('email_pm_subject') }),
+    email_pm_body: h('textarea', { rows: 12 }, v('email_pm_body')),
+    pm_progress_auto: h('select', {}, h('option', { value: '0' }, 'Off'), h('option', { value: '1' }, 'Email every active technician their PM progress each month')),
+    pm_progress_day: h('input', { type: 'number', min: 1, max: 28, value: v('pm_progress_day') || '20' }),
+    password_reset_enabled: h('select', {}, h('option', { value: '1' }, 'On: users can reset their password with an emailed link'), h('option', { value: '0' }, 'Off: an administrator resets passwords')),
+  };
+  inp.password_reset_enabled.value = v('password_reset_enabled') === '0' ? '0' : '1';
+  const resetStatus = { available: 'Available on the sign-in page.', disabled: 'Turned off.', email: 'Not available until email is set up above.', public_url: 'Not available until the Public URL is set (Organization & portal); the emailed link points there.' }[s.settings.password_reset_status] || '';
+  inp.smtp_security.value = v('smtp_security') || 'starttls';
+  inp.smtp_allow_self_signed.value = v('smtp_allow_self_signed') === '1' ? '1' : '0';
+  inp.pm_progress_auto.value = v('pm_progress_auto') === '1' ? '1' : '0';
+  const clearPass = h('input', { type: 'checkbox' });
+  const field = (label, i, hint) => h('div', { class: 'field' }, h('label', {}, label), i, hint ? h('div', { class: 'hint' }, hint) : null);
+  const save = () => {
+    const body = Object.fromEntries(Object.entries(inp).map(([k, i]) => [k, i.value]));
+    if (!body.smtp_pass) delete body.smtp_pass;
+    if (clearPass.checked) body.smtp_pass_clear = true;
+    return api('PUT', '/api/settings', body);
+  };
+  const reset = (k, def) => h('button', { class: 'btn small', type: 'button', onclick: () => { inp[k].value = def; } }, 'Restore default');
+  return h('div', { class: 'card form' }, h('h2', {}, 'Email'),
+    h('p', { class: 'muted small' }, 'Used to email Unable To Locate reports to department managers and PM progress reports to technicians and teams. Use your hospital’s mail server or relay (ask IT for the settings). Every email sent is recorded in the ', h('a', { href: '#/list/email_log' }, 'email log'), '.'),
+    h('div', { class: 'fields' },
+      field('SMTP server', inp.smtp_host), field('Port', inp.smtp_port), field('Security', inp.smtp_security), field('User name', inp.smtp_user),
+      field('Password', inp.smtp_pass, s.settings.smtp_pass_set ? h('label', {}, clearPass, ' Remove the saved password') : 'Stored on the server only; never shown again.'),
+      field('From address', inp.smtp_from), field('From name', inp.smtp_from_name), field('Reply-to address', inp.smtp_reply_to, 'Optional. Replies from managers go here (for example a shared Clinical Engineering mailbox).'),
+      field('Allow self-signed certificate', inp.smtp_allow_self_signed)),
+    h('div', { style: 'display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap' },
+      h('button', { class: 'btn primary', onclick: () => save().then(() => { toast('Email settings saved'); inp.smtp_pass.value = ''; }).catch(fail) }, 'Save email settings'),
+      h('button', { class: 'btn', onclick: async () => {
+        const r = await promptBox('Send a test email', [{ name: 'to', label: 'Send to', type: 'email', value: S.user.email || '', required: true }]);
+        if (!r) return;
+        try { await save(); await api('POST', '/api/email/test', { to: r.to }); toast(`Test email sent to ${r.to}`); } catch (e) { fail(e); }
+      } }, 'Send test email'),
+      h('a', { class: 'btn', href: '#/list/email_log' }, 'Email log')),
+    h('div', { class: 'section-title', style: 'margin-top:1.25rem' }, 'Unable To Locate email (sent to department managers, with the PDF report attached)'),
+    h('div', { class: 'stack' }, field('Subject', inp.email_utl_subject), field('Message', inp.email_utl_body),
+      h('div', {}, reset('email_utl_body', s.defaults?.email_utl_body || ''), ' ', h('span', { class: 'hint' }, 'Placeholders: {manager_name} {department} {facility} {count} {date} {sender_name} {sender_title} {sender_email} {org_name}'))),
+    h('div', { class: 'section-title', style: 'margin-top:1.25rem' }, 'PM progress email (sent to technicians and teams, with the open PM list attached)'),
+    h('div', { class: 'stack' }, field('Subject', inp.email_pm_subject), field('Message', inp.email_pm_body),
+      h('div', {}, reset('email_pm_body', s.defaults?.email_pm_body || ''), ' ', h('span', { class: 'hint' }, 'Placeholders: {name} {month} {due} {completed} {remaining} {overdue} {pct} {sender_name} {org_name}'))),
+    h('div', { class: 'section-title', style: 'margin-top:1.25rem' }, 'Forgot password'),
+    h('div', { class: 'fields' }, field('Password reset by email', inp.password_reset_enabled, `${resetStatus} Links work once and expire after 60 minutes.`)),
+    h('div', { class: 'section-title', style: 'margin-top:1.25rem' }, 'Automatic monthly PM progress'),
+    h('div', { class: 'fields' }, field('Monthly email', inp.pm_progress_auto), field('Day of the month', inp.pm_progress_day, 'Sent once on or after this day, so technicians see what is left before month end.')),
+    h('button', { class: 'btn primary', style: 'margin-top:1rem', onclick: () => save().then(() => toast('Email settings saved')).catch(fail) }, 'Save email settings'));
 }
 
 // ======================================================================
@@ -2005,7 +2306,7 @@ async function viewPmPlanner(el, params) {
 
   el.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'PM Planner'), h('div', { class: 'muted' }, 'Forecast of scheduled preventive maintenance, month by month. Spread the work evenly and move PMs between months.')),
-      h('div', { class: 'actions' }, horizon, measureSel, h('a', { class: 'btn', href: '#/list/pm_schedules' }, 'PM Schedules'))),
+      h('div', { class: 'actions' }, horizon, measureSel, isMgr ? h('button', { class: 'btn', onclick: () => pmProgressDialog(thisMonth).catch(fail) }, '✉ Email PM progress…') : null, h('a', { class: 'btn', href: '#/list/pm_schedules' }, 'PM Schedules'))),
     filters, stats, h('div', { class: 'card' }, chartHost), tabs, bar, listHost);
   await refreshChart();
   await refreshList();
@@ -2114,4 +2415,6 @@ function viewAbout(el) {
     h('p', { class: 'muted small' }, 'Libre supports documentation for regulatory and accreditation programs but does not by itself establish compliance with any standard. Results, signatures and AI or automated recommendations must be reviewed by qualified personnel.')));
 }
 
+// A reset link pasted into a tab that is showing the sign-in page.
+window.addEventListener('hashchange', () => { if (!S.user && location.hash.startsWith('#/reset-password')) boot(); });
 boot();
