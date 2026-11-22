@@ -53,7 +53,7 @@ On Windows you can double-click `start-libre.cmd`. To install as a service, see 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 ```
-This produces `dist/libre-<version>.zip` (ready to install), `dist/libre-<version>-source.zip`, and SHA-256 checksums.
+This produces `dist/libre-<version>.zip` (ready to install), `dist/libre-<version>-source.zip`, `dist/libre-demo-<version>.zip` (ready-to-run demo with fictional data), and SHA-256 checksums.
 
 ## Development
 
